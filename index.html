@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f4f6f5" />
+  <title>Training Log</title>
+  <script src="https://telegram.org/js/telegram-web-app.js?65"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>TRAINING LOG</h1>
+        <div id="tgStatus" class="tiny muted">connecting…</div>
+      </div>
+      <button id="closeApp" class="ghost-btn" type="button">Close</button>
+    </header>
+
+    <nav class="tabs" aria-label="Main navigation">
+      <button class="tab active" data-tab="train">TRAIN</button>
+      <button class="tab" data-tab="body">BODY</button>
+      <button class="tab" data-tab="skills">SKILLS & REHAB</button>
+      <button class="tab" data-tab="progress">PROGRESS</button>
+    </nav>
+
+    <main>
+      <section id="tab-train" class="panel active-panel">
+        <div class="card controls-card">
+          <div class="field">
+            <label for="dayInput">Day</label>
+            <input id="dayInput" type="date" />
+          </div>
+          <div class="field grow">
+            <label>Session</label>
+            <div class="segmented" id="sessionPicker">
+              <button data-session="A" class="active">Tue · A</button>
+              <button data-session="B">Thu · B</button>
+              <button data-session="C">Sat · C</button>
+              <button data-session="OTHER">Other</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-head">
+          <div>
+            <h2 id="sessionTitle">Session A</h2>
+            <p id="sessionMeta" class="muted">Tap an exercise to log sets.</p>
+          </div>
+          <button id="editPlanBtn" class="pill-btn" type="button">Edit plan</button>
+        </div>
+
+        <div id="exerciseSections"></div>
+
+        <div class="card today-card">
+          <div class="section-head compact">
+            <div>
+              <h2>LOGGED TODAY</h2>
+              <p class="muted" id="loggedSummary">Nothing logged yet.</p>
+            </div>
+            <button id="finishSessionBtn" class="pill-btn secondary" type="button">Finish</button>
+          </div>
+          <div id="loggedToday"></div>
+        </div>
+      </section>
+
+      <section id="tab-body" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>BODY</h2>
+            <p class="muted">Quick daily check-in. Fill only what matters.</p>
+          </div>
+        </div>
+        <div class="card grid-card">
+          <div class="field"><label>Date</label><input id="bodyDate" type="date"></div>
+          <div class="field"><label>Weight, kg</label><input id="bodyWeight" inputmode="decimal" placeholder="65.0"></div>
+          <div class="field"><label>Sleep, h</label><input id="bodySleep" inputmode="decimal" placeholder="7.5"></div>
+          <div class="field"><label>Energy 1–5</label><input id="bodyEnergy" inputmode="numeric" placeholder="3"></div>
+          <div class="field"><label>Wrist pain 0–10</label><input id="bodyWrist" inputmode="numeric" placeholder="0"></div>
+          <div class="field"><label>Ankle pain 0–10</label><input id="bodyAnkle" inputmode="numeric" placeholder="0"></div>
+          <div class="field"><label>Knee pain 0–10</label><input id="bodyKnee" inputmode="numeric" placeholder="0"></div>
+          <div class="field"><label>Lower back 0–10</label><input id="bodyBack" inputmode="numeric" placeholder="0"></div>
+          <div class="field span-2"><label>Note</label><textarea id="bodyNote" rows="3" placeholder="Optional note"></textarea></div>
+          <button id="saveBodyBtn" class="primary-btn span-2" type="button">Save check-in</button>
+        </div>
+        <div class="card"><h3>Recent check-ins</h3><div id="bodyHistory"></div></div>
+      </section>
+
+      <section id="tab-skills" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>SKILLS & REHAB</h2>
+            <p class="muted">Library, not a to-do list.</p>
+          </div>
+          <button id="addSkillBtn" class="pill-btn" type="button">+ Add</button>
+        </div>
+        <div id="skillsList" class="library-grid"></div>
+      </section>
+
+      <section id="tab-progress" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>PROGRESS</h2>
+            <p class="muted">Exercise history from your actual logged sets.</p>
+          </div>
+        </div>
+        <div class="card progress-controls">
+          <div class="field grow"><label>Exercise</label><select id="progressExercise"></select></div>
+          <div class="field"><label>Metric</label>
+            <select id="progressMetric">
+              <option value="topWeight">Top weight</option>
+              <option value="volume">Volume</option>
+              <option value="bestReps">Best reps</option>
+              <option value="e1rm">Estimated 1RM</option>
+            </select>
+          </div>
+        </div>
+        <div class="card chart-card">
+          <div id="progressEmpty" class="empty-state">Log this exercise at least once to see progress.</div>
+          <svg id="progressChart" viewBox="0 0 800 280" preserveAspectRatio="none" aria-label="Progress chart"></svg>
+        </div>
+        <div class="card"><h3>History</h3><div id="progressHistory"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden" aria-hidden="true">
+    <section id="modal" class="modal" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div><div id="modalKicker" class="tiny muted"></div><h2 id="modalTitle">Exercise</h2></div>
+        <button id="modalClose" class="icon-btn" type="button" aria-label="Close">×</button>
+      </div>
+      <div id="modalBody"></div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="app.js"></script>
+</body>
+</html>
