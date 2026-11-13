@@ -18,40 +18,50 @@
       <button id="closeApp" class="ghost-btn" type="button">Close</button>
     </header>
 
-    <nav class="tabs" aria-label="Main navigation">
+    <nav class="tabs tabs-5" aria-label="Main navigation">
       <button class="tab active" data-tab="train">TRAIN</button>
+      <button class="tab" data-tab="library">LIBRARY</button>
       <button class="tab" data-tab="body">BODY</button>
-      <button class="tab" data-tab="skills">SKILLS & REHAB</button>
+      <button class="tab" data-tab="skills">SKILLS</button>
       <button class="tab" data-tab="progress">PROGRESS</button>
     </nav>
 
     <main>
       <section id="tab-train" class="panel active-panel">
-        <div class="card controls-card">
-          <div class="field">
+        <div class="card controls-card single-control">
+          <div class="field grow">
             <label for="dayInput">Day</label>
             <input id="dayInput" type="date" />
           </div>
-          <div class="field grow">
-            <label>Session</label>
-            <div class="segmented" id="sessionPicker">
-              <button data-session="A" class="active">Tue · A</button>
-              <button data-session="B">Thu · B</button>
-              <button data-session="C">Sat · C</button>
-              <button data-session="OTHER">Other</button>
-            </div>
-          </div>
         </div>
 
-        <div class="section-head">
+        <div class="section-head train-head">
           <div>
-            <h2 id="sessionTitle">Session A</h2>
-            <p id="sessionMeta" class="muted">Tap an exercise to log sets.</p>
+            <h2 id="dayWorkoutTitle">TODAY</h2>
+            <p id="dayWorkoutMeta" class="muted">Choose a saved workout or build today freely.</p>
           </div>
-          <button id="editPlanBtn" class="pill-btn" type="button">Edit plan</button>
+          <div class="head-actions">
+            <button id="chooseWorkoutBtn" class="pill-btn" type="button">Choose workout</button>
+            <button id="editCurrentBtn" class="pill-btn secondary" type="button">Edit today</button>
+          </div>
         </div>
 
-        <div id="exerciseSections"></div>
+        <div id="dayEmpty" class="card empty-day hidden">
+          <h3>NO PLAN FOR THIS DAY</h3>
+          <p class="muted">Load a workout from the library, or just add exercises as you go.</p>
+          <div class="modal-actions">
+            <button id="emptyChooseBtn" class="primary-btn" type="button">Choose workout</button>
+            <button id="emptyAddBtn" class="secondary-btn" type="button">+ Exercise</button>
+          </div>
+        </div>
+
+        <div id="dayExerciseSections"></div>
+
+        <div class="day-actions">
+          <button id="addTodayExerciseBtn" class="secondary-btn" type="button">+ Add exercise</button>
+          <button id="saveTodayAsWorkoutBtn" class="secondary-btn" type="button">Save today to library</button>
+          <button id="finishDayBtn" class="primary-btn" type="button">Finish workout</button>
+        </div>
 
         <div class="card today-card">
           <div class="section-head compact">
@@ -59,19 +69,41 @@
               <h2>LOGGED TODAY</h2>
               <p class="muted" id="loggedSummary">Nothing logged yet.</p>
             </div>
-            <button id="finishSessionBtn" class="pill-btn secondary" type="button">Finish</button>
           </div>
           <div id="loggedToday"></div>
         </div>
+
+        <div class="card">
+          <h3>RECENT TRAINING DAYS</h3>
+          <div id="recentTrainingDays"></div>
+        </div>
+      </section>
+
+      <section id="tab-library" class="panel">
+        <div class="section-head">
+          <div>
+            <h2>WORKOUT LIBRARY</h2>
+            <p class="muted">Reusable plans. Pick any of them for any day.</p>
+          </div>
+          <button id="newWorkoutBtn" class="pill-btn" type="button">+ Workout</button>
+        </div>
+        <div id="workoutLibrary" class="library-grid"></div>
+
+        <div class="section-head library-divider">
+          <div>
+            <h2>EXERCISE LIBRARY</h2>
+            <p class="muted">Exercises live here once; workouts only reference them.</p>
+          </div>
+          <button id="newExerciseBtn" class="pill-btn" type="button">+ Exercise</button>
+        </div>
+        <div class="card search-card">
+          <div class="field grow"><label>Search</label><input id="exerciseSearch" placeholder="Pull-up, ankle, shoulder…"></div>
+        </div>
+        <div id="exerciseLibrary" class="library-grid"></div>
       </section>
 
       <section id="tab-body" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>BODY</h2>
-            <p class="muted">Quick daily check-in. Fill only what matters.</p>
-          </div>
-        </div>
+        <div class="section-head"><div><h2>BODY</h2><p class="muted">Quick daily check-in. Fill only what matters.</p></div></div>
         <div class="card grid-card">
           <div class="field"><label>Date</label><input id="bodyDate" type="date"></div>
           <div class="field"><label>Weight, kg</label><input id="bodyWeight" inputmode="decimal" placeholder="65.0"></div>
@@ -89,37 +121,19 @@
 
       <section id="tab-skills" class="panel">
         <div class="section-head">
-          <div>
-            <h2>SKILLS & REHAB</h2>
-            <p class="muted">Library, not a to-do list.</p>
-          </div>
+          <div><h2>SKILLS & REHAB</h2><p class="muted">Library, not a to-do list.</p></div>
           <button id="addSkillBtn" class="pill-btn" type="button">+ Add</button>
         </div>
         <div id="skillsList" class="library-grid"></div>
       </section>
 
       <section id="tab-progress" class="panel">
-        <div class="section-head">
-          <div>
-            <h2>PROGRESS</h2>
-            <p class="muted">Exercise history from your actual logged sets.</p>
-          </div>
-        </div>
+        <div class="section-head"><div><h2>PROGRESS</h2><p class="muted">History from actual logged sets, regardless of which workout they came from.</p></div></div>
         <div class="card progress-controls">
           <div class="field grow"><label>Exercise</label><select id="progressExercise"></select></div>
-          <div class="field"><label>Metric</label>
-            <select id="progressMetric">
-              <option value="topWeight">Top weight</option>
-              <option value="volume">Volume</option>
-              <option value="bestReps">Best reps</option>
-              <option value="e1rm">Estimated 1RM</option>
-            </select>
-          </div>
+          <div class="field"><label>Metric</label><select id="progressMetric"><option value="topWeight">Top weight</option><option value="volume">Volume</option><option value="bestReps">Best reps</option><option value="e1rm">Estimated 1RM</option></select></div>
         </div>
-        <div class="card chart-card">
-          <div id="progressEmpty" class="empty-state">Log this exercise at least once to see progress.</div>
-          <svg id="progressChart" viewBox="0 0 800 280" preserveAspectRatio="none" aria-label="Progress chart"></svg>
-        </div>
+        <div class="card chart-card"><div id="progressEmpty" class="empty-state">Log this exercise at least once to see progress.</div><svg id="progressChart" viewBox="0 0 800 280" preserveAspectRatio="none" aria-label="Progress chart"></svg></div>
         <div class="card"><h3>History</h3><div id="progressHistory"></div></div>
       </section>
     </main>
@@ -128,7 +142,7 @@
   <div id="modalBackdrop" class="modal-backdrop hidden" aria-hidden="true">
     <section id="modal" class="modal" role="dialog" aria-modal="true">
       <div class="modal-header">
-        <div><div id="modalKicker" class="tiny muted"></div><h2 id="modalTitle">Exercise</h2></div>
+        <div><div id="modalKicker" class="tiny muted"></div><h2 id="modalTitle">Dialog</h2></div>
         <button id="modalClose" class="icon-btn" type="button" aria-label="Close">×</button>
       </div>
       <div id="modalBody"></div>
