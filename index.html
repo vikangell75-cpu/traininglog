@@ -28,21 +28,27 @@
 
     <main>
       <section id="tab-train" class="panel active-panel">
-        <div class="card controls-card single-control">
-          <div class="field grow">
-            <label for="dayInput">Day</label>
-            <input id="dayInput" type="date" />
+        <div class="train-hero">
+          <div class="train-hero-sky">
+            <div class="hero-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+            <div class="hero-mark" aria-hidden="true">TL</div>
           </div>
-        </div>
-
-        <div class="section-head train-head">
-          <div>
-            <h2 id="dayWorkoutTitle">TODAY</h2>
-            <p id="dayWorkoutMeta" class="muted">Choose a saved workout or build today freely.</p>
-          </div>
-          <div class="head-actions">
-            <button id="chooseWorkoutBtn" class="pill-btn" type="button">Choose workout</button>
-            <button id="editCurrentBtn" class="pill-btn secondary" type="button">Edit today</button>
+          <div class="train-hero-info">
+            <div class="hero-title-row">
+              <div>
+                <div class="eyebrow">TODAY'S TRAINING</div>
+                <h2 id="dayWorkoutTitle">TODAY</h2>
+                <p id="dayWorkoutMeta" class="muted">Choose a saved workout or build today freely.</p>
+              </div>
+              <div class="hero-date-field">
+                <label for="dayInput">DATE</label>
+                <input id="dayInput" type="date" />
+              </div>
+            </div>
+            <div class="hero-actions">
+              <button id="chooseWorkoutBtn" class="primary-btn" type="button">Choose workout</button>
+              <button id="editCurrentBtn" class="secondary-btn" type="button">Edit today</button>
+            </div>
           </div>
         </div>
 

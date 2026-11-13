@@ -247,8 +247,9 @@
     groupedDayItems().forEach(([section,items])=>{
       const wrap=document.createElement('div'); wrap.className='exercise-section';
       const h=document.createElement('h3');h.textContent=section;wrap.appendChild(h);
-      items.forEach(item=>wrap.appendChild(renderDayExercise(item)));
-      host.appendChild(wrap);
+      const grid=document.createElement('div'); grid.className='day-exercise-grid';
+      items.forEach(item=>grid.appendChild(renderDayExercise(item)));
+      wrap.appendChild(grid); host.appendChild(wrap);
     });
     renderLoggedToday(); renderRecentTrainingDays(); populateProgressExercises();
   }
@@ -256,8 +257,23 @@
   function renderDayExercise(item){
     const log=state.currentDay.logs[item.instanceId]; const row=document.createElement('div'); row.className='exercise-row-card'+(log?' done':'');
     const summary=log?formatSetSummary(log.sets):'';
-    row.innerHTML=`<div><div class="name">${escapeHTML(itemName(item))}</div>${item.target?`<div class="sub">${escapeHTML(item.target)}</div>`:''}${item.note?`<div class="sub">${escapeHTML(item.note)}</div>`:''}${log?`<div class="actual">${escapeHTML(summary||log.note||'logged')}</div>`:''}</div><div class="row-actions"><button class="mini-btn log-btn" type="button">${log?'Edit':'Log'}</button></div>`;
-    row.querySelector('.log-btn').onclick=()=>openExerciseLogger(item); return row;
+    row.innerHTML=`<div class="exercise-main"><div class="name">${escapeHTML(itemName(item))}</div>${item.target?`<div class="sub target-line">${escapeHTML(item.target)}</div>`:''}${item.note?`<div class="sub">${escapeHTML(item.note)}</div>`:''}${log?`<div class="actual">${escapeHTML(summary||log.note||'logged')}</div>`:''}</div><div class="row-actions"><button class="mini-btn log-btn" type="button">${log?'Edit':'Log'}</button><button class="icon-mini danger remove-today-btn" type="button" aria-label="Remove from today" title="Remove from today">×</button></div>`;
+    row.querySelector('.log-btn').onclick=()=>openExerciseLogger(item);
+    row.querySelector('.remove-today-btn').onclick=e=>{e.stopPropagation();confirmRemoveTodayExercise(item);};
+    return row;
+  }
+
+  function confirmRemoveTodayExercise(item){
+    $('modalKicker').textContent='TODAY';
+    $('modalTitle').textContent='Remove exercise?';
+    $('modalBody').innerHTML=`<div class="confirm-copy"><strong>${escapeHTML(itemName(item))}</strong><p>This removes it only from ${escapeHTML(state.selectedDate)}. The exercise stays in your library and saved workouts.</p></div><div class="modal-actions"><button id="confirmRemoveToday" class="danger-btn" type="button">Remove from today</button><button id="cancelRemoveToday" class="secondary-btn" type="button">Cancel</button></div>`;
+    $('confirmRemoveToday').onclick=async()=>{
+      state.currentDay.items=(state.currentDay.items||[]).filter(x=>x.instanceId!==item.instanceId);
+      if(state.currentDay.logs) delete state.currentDay.logs[item.instanceId];
+      await saveDay(); closeModal(); renderTrain(); showToast('Removed from today'); haptic('light');
+    };
+    $('cancelRemoveToday').onclick=closeModal;
+    openModal();
   }
 
   function renderLoggedToday(){
