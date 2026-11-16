@@ -65,7 +65,8 @@
   const state = {
     workouts: [], exercises: [], skills: structuredClone(DEFAULT_SKILLS),
     dayIndex: [], bodyIndex: [], oldSessionIndex: [], selectedDate: todayISO(),
-    currentDay: null, modalContext: null, exerciseSearch: '', exerciseCategory: 'ALL', photoCache: {}
+    currentDay: null, modalContext: null, exerciseSearch: '', exerciseCategory: 'ALL', photoCache: {},
+    calendarMonth: todayISO().slice(0,7), restTimerEnd: 0, restTimerInterval: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -78,15 +79,13 @@
 
   const EXERCISE_CATEGORY_GROUPS = {
     LEGS:['LEGS','LEG','QUADS','QUAD','HAMSTRINGS','HAMSTRING','GLUTES','GLUTE','LOWER BODY'],
-    ARMS:['ARMS','ARM','BICEPS','BICEP','TRICEPS','TRICEP','FOREARMS','FOREARM'],
+    ARMS:['ARMS','ARM','BICEPS','BICEP','TRICEPS','TRICEP','FOREARMS','FOREARM','SHOULDERS','SHOULDER','DELTS','DELT'],
     CORE:['CORE','ABS','ABDOMINALS'],
     BACK:['BACK','PULL','LATS','LAT'],
     CHEST:['CHEST','PUSH','PECS','PEC'],
-    SHOULDERS:['SHOULDERS','SHOULDER','DELTS','DELT'],
     CLIMBING:['CLIMBING','FINGERS','FINGERBOARD','HANGBOARD','CAMPUS'],
     SKILLS:['SKILLS','SKILL','MUSCLE UP','MUSCLE-UP','HANDSTAND','PLANCHE'],
-    ANKLE:['ANKLE','CALF','CALVES','FOOT'],
-    WRIST:['WRIST','WRISTS','HAND','HANDS']
+    REHAB:['REHAB','PREHAB','ANKLE','CALF','CALVES','FOOT','WRIST','WRISTS','HAND','HANDS','PHYSIO','LФК','ЛФК']
   };
   function exerciseMatchesCategory(ex, selected){
     if(!selected || selected==='ALL') return true;
@@ -96,6 +95,12 @@
       return !Object.values(EXERCISE_CATEGORY_GROUPS).flat().includes(raw);
     }
     return raw===selected || aliases.includes(raw);
+  }
+  function displayCategory(raw){
+    const c=String(raw||'GENERAL').trim().toUpperCase();
+    if(EXERCISE_CATEGORY_GROUPS.REHAB.includes(c)) return 'REHAB';
+    if(['SHOULDERS','SHOULDER','DELTS','DELT'].includes(c)) return 'ARMS';
+    return c==='GENERAL'?'OTHER':c;
   }
 
   const Storage = {
@@ -284,7 +289,7 @@
   function bindUI(){
     qsa('.tab').forEach(btn=>btn.addEventListener('click',()=>switchTab(btn.dataset.tab)));
     $('closeApp').onclick=()=>{ if(TG&&TG.initData) TG.close(); else history.length>1?history.back():showToast('Open inside Telegram to close the Mini App'); };
-    $('dayInput').onchange=async e=>{state.selectedDate=e.target.value; await loadDay(); renderTrain();};
+    $('dayInput').onchange=async e=>{state.selectedDate=e.target.value;state.calendarMonth=state.selectedDate.slice(0,7); await loadDay(); renderTrain();};
     $('chooseWorkoutBtn').onclick=openWorkoutPicker; $('emptyChooseBtn').onclick=openWorkoutPicker;
     $('addTodayExerciseBtn').onclick=()=>openExercisePicker('today'); $('emptyAddBtn').onclick=()=>openExercisePicker('today');
     $('editCurrentBtn').onclick=openCurrentEditor;
@@ -302,6 +307,9 @@
     $('modalClose').onclick=closeModal; $('modalBackdrop').onclick=e=>{if(e.target===$('modalBackdrop'))closeModal();};
     $('saveBodyBtn').onclick=saveBody; $('addSkillBtn').onclick=()=>openSkillEditor();
     $('progressExercise').onchange=renderProgress; $('progressMetric').onchange=renderProgress;
+    $('calendarPrev').onclick=()=>shiftCalendarMonth(-1);$('calendarNext').onclick=()=>shiftCalendarMonth(1);
+    $('exportBackupBtn').onclick=exportBackup;$('importBackupInput').onchange=importBackupFile;
+    $('restTimerPlus').onclick=()=>addRestTime(30);$('restTimerStop').onclick=stopRestTimer;
   }
 
   function switchTab(tab){
@@ -338,16 +346,18 @@
       items.forEach(item=>grid.appendChild(renderDayExercise(item)));
       wrap.appendChild(grid); host.appendChild(wrap);
     });
-    renderLoggedToday(); renderRecentTrainingDays(); populateProgressExercises();
+    renderLoggedToday(); renderRecentTrainingDays(); renderMiniCalendar(); enableDayReorder(); populateProgressExercises();
   }
 
   function renderDayExercise(item){
     const log=state.currentDay.logs[item.instanceId]; const row=document.createElement('div'); row.className='exercise-row-card'+(log?' done':'');
-    const summary=log?formatSetSummary(log.sets):''; const ex=exerciseById(item.exerciseId); const photo=!!ex?.photoKey;
-    if(photo)row.classList.add('with-photo');
-    row.innerHTML=`${photo?'<button class="exercise-row-photo-btn" type="button" aria-label="Exercise photo"><img class="exercise-row-photo hidden" alt=""><span class="exercise-photo-missing hidden">PHOTO</span></button>':''}<div class="exercise-main"><div class="name">${escapeHTML(itemName(item))}</div>${item.target?`<div class="sub target-line">${escapeHTML(item.target)}</div>`:''}${item.note?`<div class="sub">${escapeHTML(item.note)}</div>`:''}${log?`<div class="actual">${escapeHTML(summary||log.note||'logged')}</div>`:''}</div><div class="row-actions"><button class="mini-btn log-btn" type="button">${log?'Edit':'Log'}</button><button class="icon-mini danger remove-today-btn" type="button" aria-label="Remove from today" title="Remove from today">×</button></div>`;
+    row.dataset.instanceId=item.instanceId; row.dataset.section=(item.section||'EXERCISES'); row.draggable=true;
+    const summary=log?formatSetSummary(log.sets):''; const ex=exerciseById(item.exerciseId); const photo=!!ex?.photoKey; const ss=(item.superset||'').trim().toUpperCase();
+    if(photo)row.classList.add('with-photo'); if(ss){row.classList.add('in-superset','superset-'+ss.toLowerCase());}
+    row.innerHTML=`<button class="drag-handle" type="button" aria-label="Drag to reorder" title="Drag to reorder">⋮⋮</button>${photo?'<button class="exercise-row-photo-btn" type="button" aria-label="Exercise photo"><img class="exercise-row-photo hidden" alt=""><span class="exercise-photo-missing hidden">PHOTO</span></button>':''}<div class="exercise-main">${ss?`<div class="superset-badge">SUPERSET ${escapeHTML(ss)}</div>`:''}<div class="name">${escapeHTML(itemName(item))}</div>${item.target?`<div class="sub target-line">${escapeHTML(item.target)}</div>`:''}${item.note?`<div class="sub">${escapeHTML(item.note)}</div>`:''}${log?`<div class="actual">${escapeHTML(summary||log.note||'logged')}</div>`:''}</div><div class="row-actions"><button class="mini-btn log-btn" type="button">${log?'Edit':'Log'}</button><button class="icon-mini history-btn" type="button" aria-label="History" title="Exercise history">↗</button><button class="icon-mini danger remove-today-btn" type="button" aria-label="Remove from today" title="Remove from today">×</button></div>`;
     if(photo){ const img=row.querySelector('.exercise-row-photo'),missing=row.querySelector('.exercise-photo-missing');hydratePhoto(img,ex,missing);row.querySelector('.exercise-row-photo-btn').onclick=()=>openExerciseLogger(item); }
     row.querySelector('.log-btn').onclick=()=>openExerciseLogger(item);
+    row.querySelector('.history-btn').onclick=e=>{e.stopPropagation();openExerciseHistory(ex?.id||item.exerciseId);};
     row.querySelector('.remove-today-btn').onclick=e=>{e.stopPropagation();confirmRemoveTodayExercise(item);};
     return row;
   }
@@ -412,7 +422,7 @@
   }
 
   async function applyWorkout(workout,mode='replace'){
-    const items=(workout.items||[]).map(x=>({instanceId:uid('item'),exerciseId:x.exerciseId,name:exerciseById(x.exerciseId)?.name||x.name||'Exercise',target:x.target||'',note:x.note||'',section:x.section||''}));
+    const items=(workout.items||[]).map(x=>({instanceId:uid('item'),exerciseId:x.exerciseId,name:exerciseById(x.exerciseId)?.name||x.name||'Exercise',target:x.target||'',note:x.note||'',section:x.section||'',superset:x.superset||''}));
     if(mode==='replace') state.currentDay={date:state.selectedDate,title:workout.name,templateId:workout.id,items,logs:{},finished:false,updatedAt:null};
     else {state.currentDay.title=state.currentDay.title||workout.name;state.currentDay.items.push(...items);}
     await saveDay();closeModal();renderTrain();showToast(mode==='replace'?'Workout loaded':'Workout appended');haptic('success');
@@ -430,9 +440,9 @@
   function renderCurrentEditorRows(draft){
     const host=$('currentItems'); if(!host)return; host.innerHTML='';
     (draft.items||[]).forEach((item,i)=>{
-      const row=document.createElement('div');row.className='editor-row';
-      row.innerHTML=`<div class="name-static">${escapeHTML(itemName(item))}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="section"><button class="ghost-btn remove-editor" type="button">×</button>`;
-      row.querySelector('.target').oninput=e=>item.target=e.target.value;row.querySelector('.section').oninput=e=>item.section=e.target.value;
+      const row=document.createElement('div');row.className='editor-row editor-row-superset';
+      row.innerHTML=`<div class="name-static">${escapeHTML(itemName(item))}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="section"><select class="superset"><option value="">No superset</option><option value="A">Superset A</option><option value="B">Superset B</option><option value="C">Superset C</option><option value="D">Superset D</option></select><button class="ghost-btn remove-editor" type="button">×</button>`;
+      row.querySelector('.target').oninput=e=>item.target=e.target.value;row.querySelector('.section').oninput=e=>item.section=e.target.value;row.querySelector('.superset').value=item.superset||'';row.querySelector('.superset').onchange=e=>item.superset=e.target.value;
       row.querySelector('.remove-editor').onclick=()=>{draft.items.splice(i,1);delete draft.logs[item.instanceId];renderCurrentEditorRows(draft);};host.appendChild(row);
     });
     if(!draft.items.length)host.innerHTML='<div class="muted">No exercises yet.</div>';
@@ -444,7 +454,7 @@
     $('modalKicker').textContent='WORKOUT LIBRARY';$('modalTitle').textContent='Save current workout';
     $('modalBody').innerHTML=`<div class="grid-card"><div class="field span-2"><label>Name</label><input id="saveWorkoutName" value="${escapeHTML(base)}"></div><div class="field span-2"><label>Note</label><textarea id="saveWorkoutNote" rows="2"></textarea></div></div><div class="modal-actions"><button id="confirmSaveWorkout" class="primary-btn" type="button">Save to library</button></div>`;
     $('confirmSaveWorkout').onclick=async()=>{
-      const w={id:uid('workout'),name:$('saveWorkoutName').value.trim()||base,note:$('saveWorkoutNote').value.trim(),items:state.currentDay.items.map(x=>({exerciseId:x.exerciseId,target:x.target||'',note:x.note||'',section:x.section||''}))};
+      const w={id:uid('workout'),name:$('saveWorkoutName').value.trim()||base,note:$('saveWorkoutNote').value.trim(),items:state.currentDay.items.map(x=>({exerciseId:x.exerciseId,target:x.target||'',note:x.note||'',section:x.section||'',superset:x.superset||''}))};
       state.workouts.push(w);await saveLibraries();closeModal();renderLibrary();showToast('Workout saved');haptic('success');
     };openModal();
   }
@@ -455,7 +465,7 @@
     const renderPicker=()=>{
       const term=norm($('pickerSearch').value);const host=$('exercisePickerList');host.innerHTML='';
       state.exercises.filter(e=>!term||norm(e.name+' '+e.category+' '+e.note).includes(term)).slice(0,80).forEach(ex=>{
-        const b=document.createElement('button');b.type='button';b.className='picker-item';b.innerHTML=`<strong>${escapeHTML(ex.name)}</strong><span>${escapeHTML(ex.category||'GENERAL')}${ex.note?' · '+escapeHTML(ex.note):''}</span>`;
+        const b=document.createElement('button');b.type='button';b.className='picker-item';b.innerHTML=`<strong>${escapeHTML(ex.name)}</strong><span>${escapeHTML(displayCategory(ex.category||'GENERAL'))}${ex.note?' · '+escapeHTML(ex.note):''}</span>`;
         b.onclick=()=>addExerciseToTarget(ex,mode,draft);host.appendChild(b);
       });
       if(!host.children.length)host.innerHTML='<div class="muted">Nothing found.</div>';
@@ -464,7 +474,7 @@
   }
 
   async function addExerciseToTarget(ex,mode,draft){
-    const item={instanceId:uid('item'),exerciseId:ex.id,name:ex.name,target:'',note:'',section:ex.category||''};
+    const item={instanceId:uid('item'),exerciseId:ex.id,name:ex.name,target:'',note:'',section:displayCategory(ex.category||''),superset:''};
     if(mode==='editor'&&draft){draft.items.push(item);$('modalKicker').textContent='TODAY';$('modalTitle').textContent='Edit current workout';closeModal();openCurrentEditorFromDraft(draft);return;}
     state.currentDay.items.push(item); if(!state.currentDay.title)state.currentDay.title='Custom workout';await saveDay();closeModal();renderTrain();showToast('Exercise added');
   }
@@ -492,9 +502,11 @@
     $('modalKicker').textContent=state.currentDay.title||'TODAY';$('modalTitle').textContent=itemName(item);
     const existing=state.currentDay.logs[item.instanceId]||{exerciseId:exId,name:itemName(item),sets:[],rpe:'',pain:'',note:'',skipped:false};
     const sets=existing.sets?.length?structuredClone(existing.sets):defaultSetsFromTarget(item.target);const previous=await getPreviousExerciseLog(exId);
-    $('modalBody').innerHTML=`${ex.photoKey?'<div class="logger-photo-wrap"><img id="loggerExercisePhoto" class="logger-photo hidden" alt="Exercise reference"><div id="loggerPhotoMissing" class="photo-device-note hidden">Photo is not stored on this device.</div></div>':''}${previous?`<div class="previous-box"><strong>Last · ${escapeHTML(previous.date)}</strong>${escapeHTML(formatSetSummary(previous.log.sets)||'Logged')}</div>`:''}<table class="set-table"><thead><tr><th>#</th><th>Weight, kg</th><th>Reps / sec</th><th></th></tr></thead><tbody id="setRows"></tbody></table><div class="modal-actions"><button id="addSetBtn" class="secondary-btn" type="button">+ Set</button>${previous?'<button id="usePrevBtn" class="secondary-btn" type="button">Use previous</button>':''}<button id="skipBtn" class="secondary-btn" type="button">Skip</button></div><div class="grid-card" style="margin-top:14px"><div class="field"><label>RPE</label><input id="logRpe" inputmode="decimal" value="${escapeHTML(existing.rpe||'')}"></div><div class="field"><label>Pain 0–10</label><input id="logPain" inputmode="numeric" value="${escapeHTML(existing.pain||'')}"></div><div class="field span-2"><label>Note</label><textarea id="logNote" rows="2">${escapeHTML(existing.note||'')}</textarea></div></div><div class="modal-actions"><button id="saveExerciseBtn" class="primary-btn" type="button">Save exercise</button><button id="deleteExerciseLogBtn" class="secondary-btn" type="button">Clear log</button></div>`;
+    $('modalBody').innerHTML=`${ex.photoKey?'<div class="logger-photo-wrap"><img id="loggerExercisePhoto" class="logger-photo hidden" alt="Exercise reference"><div id="loggerPhotoMissing" class="photo-device-note hidden">Photo is not stored on this device.</div></div>':''}${previous?`<div class="previous-box"><strong>Last · ${escapeHTML(previous.date)}</strong>${escapeHTML(formatSetSummary(previous.log.sets)||'Logged')}</div>`:''}<div class="logger-tools"><button id="loggerHistoryBtn" class="secondary-btn" type="button">History</button><div class="rest-presets"><span>REST</span><button data-rest="60" type="button">60s</button><button data-rest="90" type="button">90s</button><button data-rest="120" type="button">120s</button></div></div><table class="set-table"><thead><tr><th>#</th><th>Weight, kg</th><th>Reps / sec</th><th></th></tr></thead><tbody id="setRows"></tbody></table><div class="modal-actions"><button id="addSetBtn" class="secondary-btn" type="button">+ Set</button>${previous?'<button id="usePrevBtn" class="secondary-btn" type="button">Use previous</button>':''}<button id="skipBtn" class="secondary-btn" type="button">Skip</button></div><div class="grid-card" style="margin-top:14px"><div class="field"><label>RPE</label><input id="logRpe" inputmode="decimal" value="${escapeHTML(existing.rpe||'')}"></div><div class="field"><label>Pain 0–10</label><input id="logPain" inputmode="numeric" value="${escapeHTML(existing.pain||'')}"></div><div class="field span-2"><label>Note</label><textarea id="logNote" rows="2">${escapeHTML(existing.note||'')}</textarea></div></div><div class="modal-actions"><button id="saveExerciseBtn" class="primary-btn" type="button">Save exercise</button><button id="deleteExerciseLogBtn" class="secondary-btn" type="button">Clear log</button></div>`;
     if(ex.photoKey)hydratePhoto($('loggerExercisePhoto'),ex,$('loggerPhotoMissing'));
     renderSetRows(sets);$('addSetBtn').onclick=()=>{sets.push({weight:'',reps:''});renderSetRows(sets);};if(previous)$('usePrevBtn').onclick=()=>{sets.splice(0,sets.length,...structuredClone(previous.log.sets||[]));renderSetRows(sets);};
+    $('loggerHistoryBtn').onclick=()=>openExerciseHistory(exId,item);
+    qsa('[data-rest]').forEach(btn=>btn.onclick=()=>startRestTimer(+btn.dataset.rest));
     $('skipBtn').onclick=async()=>{state.currentDay.logs[item.instanceId]={exerciseId:exId,name:itemName(item),sets:[],rpe:'',pain:'',note:'Skipped',skipped:true};await saveDay();closeModal();renderTrain();};
     $('saveExerciseBtn').onclick=async()=>{state.currentDay.logs[item.instanceId]={exerciseId:exId,name:itemName(item),sets:readSetRows(),rpe:$('logRpe').value.trim(),pain:$('logPain').value.trim(),note:$('logNote').value.trim(),skipped:false};await saveDay();closeModal();renderTrain();haptic('success');showToast('Saved');};
     $('deleteExerciseLogBtn').onclick=async()=>{delete state.currentDay.logs[item.instanceId];await saveDay();closeModal();renderTrain();showToast('Log cleared');};openModal();
@@ -524,9 +536,9 @@
     const host=$('exerciseLibrary');host.innerHTML='';const term=norm(state.exerciseSearch);
     const selected=state.exerciseCategory||'ALL';
     state.exercises.filter(e=>exerciseMatchesCategory(e,selected)&&(!term||norm(e.name+' '+e.category+' '+e.note).includes(term))).sort((a,b)=>a.name.localeCompare(b.name)).forEach(ex=>{
-      const card=document.createElement('div');card.className='library-card'+(ex.photoKey?' has-photo':'');card.innerHTML=`${ex.photoKey?'<div class="library-photo-wrap"><img class="library-card-photo hidden" alt=""><div class="library-photo-missing hidden">PHOTO · THIS DEVICE</div></div>':''}<div class="tag">${escapeHTML(ex.category||'EXERCISE')}</div><h3>${escapeHTML(ex.name)}</h3><p>${escapeHTML(ex.note||'')}</p><div class="library-actions"><button class="secondary-btn add" type="button">Add today</button><button class="secondary-btn edit" type="button">Edit</button></div>`;
+      const card=document.createElement('div');card.className='library-card'+(ex.photoKey?' has-photo':'');card.innerHTML=`${ex.photoKey?'<div class="library-photo-wrap"><img class="library-card-photo hidden" alt=""><div class="library-photo-missing hidden">PHOTO · THIS DEVICE</div></div>':''}<div class="tag">${escapeHTML(displayCategory(ex.category||'EXERCISE'))}</div><h3>${escapeHTML(ex.name)}</h3><p>${escapeHTML(ex.note||'')}</p><div class="library-actions"><button class="secondary-btn add" type="button">Add today</button><button class="secondary-btn history" type="button">History</button><button class="secondary-btn edit" type="button">Edit</button></div>`;
       if(ex.photoKey)hydratePhoto(card.querySelector('.library-card-photo'),ex,card.querySelector('.library-photo-missing'));
-      card.querySelector('.add').onclick=()=>addExerciseToTarget(ex,'today');card.querySelector('.edit').onclick=()=>openExerciseEditor(ex.id);host.appendChild(card);
+      card.querySelector('.add').onclick=()=>addExerciseToTarget(ex,'today');card.querySelector('.history').onclick=()=>openExerciseHistory(ex.id);card.querySelector('.edit').onclick=()=>openExerciseEditor(ex.id);host.appendChild(card);
     });if(!host.children.length)host.innerHTML=`<div class="muted">No ${selected==='ALL'?'':selected.toLowerCase()+' '}exercises found.</div>`;
   }
 
@@ -539,12 +551,12 @@
   }
 
   function renderWorkoutEditorRows(draft){
-    const host=$('workoutItems');if(!host)return;host.innerHTML='';draft.items.forEach((item,i)=>{const ex=exerciseById(item.exerciseId);const row=document.createElement('div');row.className='editor-row';row.innerHTML=`<div class="name-static">${escapeHTML(ex?.name||'Missing exercise')}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="section"><button class="ghost-btn remove-editor" type="button">×</button>`;row.querySelector('.target').oninput=e=>item.target=e.target.value;row.querySelector('.section').oninput=e=>item.section=e.target.value;row.querySelector('.remove-editor').onclick=()=>{draft.items.splice(i,1);renderWorkoutEditorRows(draft);};host.appendChild(row);});if(!draft.items.length)host.innerHTML='<div class="muted">No exercises yet.</div>';
+    const host=$('workoutItems');if(!host)return;host.innerHTML='';draft.items.forEach((item,i)=>{const ex=exerciseById(item.exerciseId);const row=document.createElement('div');row.className='editor-row editor-row-superset';row.innerHTML=`<div class="name-static">${escapeHTML(ex?.name||'Missing exercise')}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="section"><select class="superset"><option value="">No superset</option><option value="A">Superset A</option><option value="B">Superset B</option><option value="C">Superset C</option><option value="D">Superset D</option></select><button class="ghost-btn remove-editor" type="button">×</button>`;row.querySelector('.target').oninput=e=>item.target=e.target.value;row.querySelector('.section').oninput=e=>item.section=e.target.value;row.querySelector('.superset').value=item.superset||'';row.querySelector('.superset').onchange=e=>item.superset=e.target.value;row.querySelector('.remove-editor').onclick=()=>{draft.items.splice(i,1);renderWorkoutEditorRows(draft);};host.appendChild(row);});if(!draft.items.length)host.innerHTML='<div class="muted">No exercises yet.</div>';
   }
 
   function openWorkoutExercisePicker(draft){
     $('modalKicker').textContent='WORKOUT';$('modalTitle').textContent='Add from library';$('modalBody').innerHTML=`<div class="field"><label>Search</label><input id="workoutExSearch" placeholder="Search exercise"></div><div class="picker-list" id="workoutExPicker"></div><div class="modal-actions"><button id="workoutNewEx" class="secondary-btn" type="button">+ New exercise</button></div>`;
-    const render=()=>{const term=norm($('workoutExSearch').value),host=$('workoutExPicker');host.innerHTML='';state.exercises.filter(e=>!term||norm(e.name+' '+e.category).includes(term)).slice(0,80).forEach(ex=>{const b=document.createElement('button');b.className='picker-item';b.type='button';b.innerHTML=`<strong>${escapeHTML(ex.name)}</strong><span>${escapeHTML(ex.category||'GENERAL')}</span>`;b.onclick=()=>{draft.items.push({exerciseId:ex.id,target:'',note:'',section:ex.category||''});openWorkoutEditorFromDraft(draft);};host.appendChild(b);});};$('workoutExSearch').oninput=render;$('workoutNewEx').onclick=()=>openExerciseEditor(null,{workoutDraft:draft});render();
+    const render=()=>{const term=norm($('workoutExSearch').value),host=$('workoutExPicker');host.innerHTML='';state.exercises.filter(e=>!term||norm(e.name+' '+e.category).includes(term)).slice(0,80).forEach(ex=>{const b=document.createElement('button');b.className='picker-item';b.type='button';b.innerHTML=`<strong>${escapeHTML(ex.name)}</strong><span>${escapeHTML(displayCategory(ex.category||'GENERAL'))}</span>`;b.onclick=()=>{draft.items.push({exerciseId:ex.id,target:'',note:'',section:displayCategory(ex.category||''),superset:''});openWorkoutEditorFromDraft(draft);};host.appendChild(b);});};$('workoutExSearch').oninput=render;$('workoutNewEx').onclick=()=>openExerciseEditor(null,{workoutDraft:draft});render();
   }
 
   function openWorkoutEditorFromDraft(draft){
@@ -555,20 +567,20 @@
     const existing=id?exerciseById(id):null;const draft=existing?structuredClone(existing):{id:uid('ex'),name:'',category:'GENERAL',note:''};
     let pendingPhotoData=null,pendingRemovePhoto=false;
     $('modalKicker').textContent='EXERCISE LIBRARY';$('modalTitle').textContent=existing?'Edit exercise':'New exercise';
-    $('modalBody').innerHTML=`<div class="grid-card"><div class="field span-2"><label>Name</label><input id="exerciseName" value="${escapeHTML(draft.name)}" placeholder="Exercise name"></div><div class="field"><label>Category</label><input id="exerciseCategory" list="exerciseCategoryOptions" value="${escapeHTML(draft.category||'GENERAL')}" placeholder="LEGS / ARMS / CORE…"><datalist id="exerciseCategoryOptions"><option value="LEGS"><option value="ARMS"><option value="CORE"><option value="BACK"><option value="CHEST"><option value="SHOULDERS"><option value="CLIMBING"><option value="SKILLS"><option value="ANKLE"><option value="WRIST"><option value="GENERAL"></datalist></div><div class="field span-2"><label>Reference photo</label><div class="exercise-photo-editor"><div class="exercise-photo-preview-wrap"><img id="exercisePhotoPreview" class="exercise-photo-preview hidden" alt="Exercise reference"><div id="exercisePhotoPlaceholder" class="exercise-photo-placeholder"><span>＋</span><strong>Add reference photo</strong><small>Useful for technique, setup or rehab drills.</small></div></div><div class="photo-editor-actions"><label class="secondary-btn file-picker-btn">Choose photo<input id="exercisePhotoInput" type="file" accept="image/*"></label><button id="removeExercisePhotoBtn" class="secondary-btn" type="button">Remove photo</button></div><div class="photo-device-note">Compressed automatically. For now photos are stored in Telegram on this device; exercise data itself still syncs normally.</div></div></div><div class="field span-2"><label>Note</label><textarea id="exerciseNote" rows="3">${escapeHTML(draft.note||'')}</textarea></div></div><div class="modal-actions"><button id="saveExerciseLibraryBtn" class="primary-btn" type="button">${context?'Save & add':'Save exercise'}</button>${existing?'<button id="deleteExerciseLibraryBtn" class="danger-btn" type="button">Delete</button>':''}</div>`;
+    $('modalBody').innerHTML=`<div class="grid-card"><div class="field span-2"><label>Name</label><input id="exerciseName" value="${escapeHTML(draft.name)}" placeholder="Exercise name"></div><div class="field"><label>Category</label><input id="exerciseCategory" list="exerciseCategoryOptions" value="${escapeHTML(draft.category||'GENERAL')}" placeholder="LEGS / ARMS / CORE…"><datalist id="exerciseCategoryOptions"><option value="LEGS"><option value="ARMS"><option value="CORE"><option value="BACK"><option value="CHEST"><option value="CLIMBING"><option value="SKILLS"><option value="REHAB"><option value="OTHER"></datalist></div><div class="field span-2"><label>Reference photo</label><div class="exercise-photo-editor"><div class="exercise-photo-preview-wrap"><img id="exercisePhotoPreview" class="exercise-photo-preview hidden" alt="Exercise reference"><div id="exercisePhotoPlaceholder" class="exercise-photo-placeholder"><span>＋</span><strong>Add reference photo</strong><small>Useful for technique, setup or rehab drills.</small></div></div><div class="photo-editor-actions"><label class="secondary-btn file-picker-btn">Choose photo<input id="exercisePhotoInput" type="file" accept="image/*"></label><button id="removeExercisePhotoBtn" class="secondary-btn" type="button">Remove photo</button></div><div class="photo-device-note">Compressed automatically. For now photos are stored in Telegram on this device; exercise data itself still syncs normally.</div></div></div><div class="field span-2"><label>Note</label><textarea id="exerciseNote" rows="3">${escapeHTML(draft.note||'')}</textarea></div></div><div class="modal-actions"><button id="saveExerciseLibraryBtn" class="primary-btn" type="button">${context?'Save & add':'Save exercise'}</button>${existing?'<button id="deleteExerciseLibraryBtn" class="danger-btn" type="button">Delete</button>':''}</div>`;
     const preview=$('exercisePhotoPreview'),placeholder=$('exercisePhotoPlaceholder'),removeBtn=$('removeExercisePhotoBtn');
     const showPreview=data=>{if(data){preview.src=data;preview.classList.remove('hidden');placeholder.classList.add('hidden');removeBtn.disabled=false;}else{preview.removeAttribute('src');preview.classList.add('hidden');placeholder.classList.remove('hidden');removeBtn.disabled=true;}};
     if(existing?.photoKey)getExercisePhoto(existing).then(showPreview);else showPreview(null);
     $('exercisePhotoInput').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{showToast('Preparing photo…');pendingPhotoData=await compressImage(file);pendingRemovePhoto=false;showPreview(pendingPhotoData);showToast('Photo ready');}catch(err){showToast(err.message||'Could not add photo');}e.target.value='';};
     removeBtn.onclick=()=>{pendingPhotoData=null;pendingRemovePhoto=true;showPreview(null);};
     $('saveExerciseLibraryBtn').onclick=async()=>{
-      draft.name=$('exerciseName').value.trim()||'Untitled exercise';draft.category=$('exerciseCategory').value.trim()||'GENERAL';draft.note=$('exerciseNote').value.trim();
+      draft.name=$('exerciseName').value.trim()||'Untitled exercise';draft.category=$('exerciseCategory').value.trim().toUpperCase()||'OTHER';draft.note=$('exerciseNote').value.trim();
       if(pendingRemovePhoto&&draft.photoKey){await MediaStorage.remove(draft.photoKey);delete state.photoCache[draft.photoKey];delete draft.photoKey;}
       if(pendingPhotoData){const key=draft.photoKey||photoKeyForExercise(draft.id);const ok=await MediaStorage.set(key,pendingPhotoData);if(!ok){showToast('Photo storage is full');return;}draft.photoKey=key;state.photoCache[key]=pendingPhotoData;}
       const i=state.exercises.findIndex(x=>x.id===draft.id);if(i>=0)state.exercises[i]=draft;else state.exercises.push(draft);await saveLibraries();
       if(context?.addMode==='today'){await addExerciseToTarget(draft,'today');return;}
-      if(context?.addMode==='editor'&&context.draft){context.draft.items.push({instanceId:uid('item'),exerciseId:draft.id,name:draft.name,target:'',note:'',section:draft.category});openCurrentEditorFromDraft(context.draft);return;}
-      if(context?.workoutDraft){context.workoutDraft.items.push({exerciseId:draft.id,target:'',note:'',section:draft.category});openWorkoutEditorFromDraft(context.workoutDraft);return;}
+      if(context?.addMode==='editor'&&context.draft){context.draft.items.push({instanceId:uid('item'),exerciseId:draft.id,name:draft.name,target:'',note:'',section:displayCategory(draft.category),superset:''});openCurrentEditorFromDraft(context.draft);return;}
+      if(context?.workoutDraft){context.workoutDraft.items.push({exerciseId:draft.id,target:'',note:'',section:displayCategory(draft.category),superset:''});openWorkoutEditorFromDraft(context.workoutDraft);return;}
       closeModal();renderLibrary();renderTrain();populateProgressExercises();showToast('Exercise saved');
     };
     if(existing)$('deleteExerciseLibraryBtn').onclick=async()=>{const inWorkouts=state.workouts.some(w=>w.items.some(x=>x.exerciseId===id));if(inWorkouts){showToast('Remove it from saved workouts first');return;}await removeExercisePhoto(existing);state.exercises=state.exercises.filter(x=>x.id!==id);await saveLibraries();closeModal();renderLibrary();populateProgressExercises();showToast('Exercise deleted');};
@@ -598,6 +610,88 @@
   async function renderProgress(){
     const exId=$('progressExercise').value;if(!exId)return;const metric=$('progressMetric').value,hist=await getExerciseHistory(exId),pts=hist.map(h=>({date:h.date,value:metricValue(h,metric),raw:h})).filter(x=>Number.isFinite(x.value)&&x.value>0);$('progressEmpty').style.display=pts.length?'none':'block';$('progressChart').style.display=pts.length?'block':'none';const svg=$('progressChart');svg.innerHTML='';if(pts.length){const W=800,H=280,pad={l:52,r:18,t:20,b:42},vals=pts.map(p=>p.value);let min=Math.min(...vals),max=Math.max(...vals);if(min===max){min*=.9;max*=1.1||1;}const range=max-min||1,x=i=>pad.l+(pts.length===1?(W-pad.l-pad.r)/2:i*(W-pad.l-pad.r)/(pts.length-1)),y=v=>pad.t+(max-v)/range*(H-pad.t-pad.b);for(let i=0;i<4;i++){const yy=pad.t+i*(H-pad.t-pad.b)/3,val=max-i*range/3;svg.insertAdjacentHTML('beforeend',`<line class="chart-grid" x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}"/><text class="chart-label" x="4" y="${yy+4}">${Math.round(val*10)/10}</text>`);}const d=pts.map((p,i)=>`${i?'L':'M'} ${x(i)} ${y(p.value)}`).join(' ');svg.insertAdjacentHTML('beforeend',`<path class="chart-line" d="${d}"/>`);pts.forEach((p,i)=>svg.insertAdjacentHTML('beforeend',`<circle class="chart-dot" cx="${x(i)}" cy="${y(p.value)}" r="5"/><text class="chart-label" x="${x(i)}" y="${H-12}" text-anchor="middle">${p.date.slice(5)}</text>`));}
     const host=$('progressHistory');host.innerHTML='';hist.slice().reverse().forEach(h=>{const row=document.createElement('div');row.className='history-row';row.innerHTML=`<strong>${escapeHTML(h.date)} · ${escapeHTML(h.workout||'Workout')}</strong><span>${escapeHTML(formatSetSummary(h.sets)||'Logged')}</span><span>${h.rpe?'RPE '+escapeHTML(h.rpe):''}${h.pain?' · pain '+escapeHTML(h.pain):''}</span>`;host.appendChild(row);});if(!hist.length)host.innerHTML='<div class="muted">No history yet.</div>';
+  }
+
+  async function openExerciseHistory(exId,returnItem=null){
+    const ex=exerciseById(exId)||{name:'Exercise'};const hist=await getExerciseHistory(exId);
+    $('modalKicker').textContent='EXERCISE HISTORY';$('modalTitle').textContent=ex.name;
+    const recent=hist.slice().reverse().slice(0,16);const allSets=hist.flatMap(h=>h.sets||[]).map(x=>({w:parseFloat(String(x.weight).replace(',','.'))||0,r:parseFloat(String(x.reps).replace(',','.'))||0}));
+    const topWeight=allSets.length?Math.max(...allSets.map(x=>x.w)):0;const bestReps=allSets.length?Math.max(...allSets.map(x=>x.r)):0;
+    $('modalBody').innerHTML=`<div class="history-stats"><div><span>SESSIONS</span><strong>${hist.length}</strong></div><div><span>TOP WEIGHT</span><strong>${topWeight||'—'}${topWeight?' kg':''}</strong></div><div><span>BEST REPS</span><strong>${bestReps||'—'}</strong></div></div><div class="history-modal-list" id="exerciseHistoryList"></div><div class="modal-actions">${returnItem?'<button id="historyBackToLog" class="primary-btn" type="button">Back to log</button>':''}</div>`;
+    const host=$('exerciseHistoryList');recent.forEach(h=>{const row=document.createElement('div');row.className='history-row history-detail';row.innerHTML=`<strong>${escapeHTML(h.date)} · ${escapeHTML(h.workout||'Workout')}</strong><span>${escapeHTML(formatSetSummary(h.sets)||'Logged')}</span><span>${h.rpe?'RPE '+escapeHTML(h.rpe):''}${h.pain?' · pain '+escapeHTML(h.pain):''}${h.note?' · '+escapeHTML(h.note):''}</span>`;host.appendChild(row);});if(!recent.length)host.innerHTML='<div class="muted">No logged history yet.</div>';
+    if(returnItem)$('historyBackToLog').onclick=()=>openExerciseLogger(returnItem);openModal();
+  }
+
+  function shiftCalendarMonth(delta){
+    const [y,m]=state.calendarMonth.split('-').map(Number);const d=new Date(y,m-1+delta,1);state.calendarMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;renderMiniCalendar();
+  }
+  function renderMiniCalendar(){
+    const label=$('calendarMonthLabel'),grid=$('miniCalendarGrid');if(!label||!grid)return;
+    const [y,m]=state.calendarMonth.split('-').map(Number);const first=new Date(y,m-1,1);const days=new Date(y,m,0).getDate();const offset=(first.getDay()+6)%7;
+    label.textContent=first.toLocaleDateString(undefined,{month:'long',year:'numeric'}).toUpperCase();grid.innerHTML='';
+    for(let i=0;i<offset;i++){const blank=document.createElement('span');blank.className='calendar-day blank';grid.appendChild(blank);}
+    const trained=new Set(state.dayIndex.map(x=>x.date));
+    for(let d=1;d<=days;d++){
+      const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const b=document.createElement('button');b.type='button';b.className='calendar-day';b.textContent=d;b.dataset.date=iso;
+      if(iso===state.selectedDate)b.classList.add('selected');if(iso===todayISO())b.classList.add('today');if(trained.has(iso))b.classList.add('has-workout');
+      b.onclick=async()=>{state.selectedDate=iso;state.calendarMonth=iso.slice(0,7);$('dayInput').value=iso;$('bodyDate').value=iso;await loadDay();renderTrain();};grid.appendChild(b);
+    }
+  }
+
+  function syncSectionOrder(section,orderedIds){
+    const indexes=[];state.currentDay.items.forEach((x,i)=>{if(((x.section||'').trim()||'EXERCISES')===section)indexes.push(i);});
+    const byId=new Map(state.currentDay.items.map(x=>[x.instanceId,x]));indexes.forEach((idx,i)=>{const item=byId.get(orderedIds[i]);if(item)state.currentDay.items[idx]=item;});saveDay();
+  }
+  function enableDayReorder(){
+    qsa('.day-exercise-grid').forEach(grid=>{
+      const section=grid.closest('.exercise-section')?.querySelector('h3')?.textContent||'EXERCISES';let dragged=null;
+      qsa('.exercise-row-card',grid).forEach(card=>{
+        card.addEventListener('dragstart',e=>{if(!e.target.closest('.drag-handle')&&document.activeElement!==card.querySelector('.drag-handle')){}dragged=card;card.classList.add('dragging');try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',card.dataset.instanceId);}catch(_){}});
+        card.addEventListener('dragend',()=>{card.classList.remove('dragging');const ids=qsa('.exercise-row-card',grid).map(x=>x.dataset.instanceId);syncSectionOrder(section,ids);});
+        const handle=card.querySelector('.drag-handle');if(!handle)return;
+        let touchActive=false;
+        handle.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;touchActive=true;dragged=card;card.classList.add('dragging-touch');handle.setPointerCapture?.(e.pointerId);e.preventDefault();});
+        handle.addEventListener('pointermove',e=>{if(!touchActive||!dragged)return;const el=document.elementFromPoint(e.clientX,e.clientY);const over=el?.closest('.exercise-row-card');if(!over||over===dragged||over.parentElement!==grid)return;const r=over.getBoundingClientRect();grid.insertBefore(dragged,e.clientY<r.top+r.height/2?over:over.nextSibling);e.preventDefault();});
+        const finish=e=>{if(!touchActive)return;touchActive=false;card.classList.remove('dragging-touch');try{handle.releasePointerCapture?.(e.pointerId);}catch(_){}const ids=qsa('.exercise-row-card',grid).map(x=>x.dataset.instanceId);syncSectionOrder(section,ids);haptic('selection');};handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
+      });
+      grid.addEventListener('dragover',e=>{e.preventDefault();if(!dragged)return;const cards=qsa('.exercise-row-card:not(.dragging)',grid);const after=cards.find(c=>{const r=c.getBoundingClientRect();return e.clientY<r.top+r.height/2;});grid.insertBefore(dragged,after||null);});
+    });
+  }
+
+  function formatTimer(sec){sec=Math.max(0,Math.ceil(sec));return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;}
+  function renderRestTimer(){
+    const panel=$('restTimerPanel'),display=$('restTimerDisplay');if(!panel||!display)return;const left=(state.restTimerEnd-Date.now())/1000;
+    if(state.restTimerEnd<=0){panel.classList.add('hidden');return;}panel.classList.remove('hidden');display.textContent=formatTimer(left);
+    if(left<=0){clearInterval(state.restTimerInterval);state.restTimerInterval=null;state.restTimerEnd=0;display.textContent='0:00';panel.classList.add('done');haptic('success');setTimeout(()=>{panel.classList.add('hidden');panel.classList.remove('done');},3500);}
+  }
+  function startRestTimer(seconds=90){
+    clearInterval(state.restTimerInterval);state.restTimerEnd=Date.now()+seconds*1000;$('restTimerPanel').classList.remove('done');renderRestTimer();state.restTimerInterval=setInterval(renderRestTimer,250);showToast(`Rest ${seconds}s`);haptic('light');
+  }
+  function addRestTime(seconds=30){if(state.restTimerEnd<=0)startRestTimer(seconds);else{state.restTimerEnd+=seconds*1000;renderRestTimer();}}
+  function stopRestTimer(){clearInterval(state.restTimerInterval);state.restTimerInterval=null;state.restTimerEnd=0;$('restTimerPanel').classList.add('hidden');$('restTimerPanel').classList.remove('done');}
+
+  async function exportBackup(){
+    try{
+      showToast('Preparing backup…');const days={},body={},photos={};
+      for(const entry of state.dayIndex){const raw=await Storage.get(entry.key||dayKey(entry.date));if(raw)days[entry.date]=safeJSON(raw,null);}
+      for(const date of state.bodyIndex){const raw=await Storage.get(bodyKey(date));if(raw)body[date]=safeJSON(raw,null);}
+      for(const ex of state.exercises){if(ex.photoKey){const data=await getExercisePhoto(ex);if(data)photos[ex.id]=data;}}
+      const payload={app:'TRAINING LOG',version:3,exportedAt:new Date().toISOString(),workouts:state.workouts,exercises:state.exercises,skills:state.skills,dayIndex:state.dayIndex,bodyIndex:state.bodyIndex,days,body,photos};
+      const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`training-log-backup-${todayISO()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);showToast('Backup exported');haptic('success');
+    }catch(e){showToast('Backup failed');}
+  }
+  async function importBackupFile(e){
+    const file=e.target.files?.[0];e.target.value='';if(!file)return;
+    try{
+      const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.exercises)||!Array.isArray(data.workouts))throw new Error('Invalid backup');
+      $('modalKicker').textContent='BACKUP';$('modalTitle').textContent='Restore backup?';$('modalBody').innerHTML=`<div class="confirm-copy"><strong>${escapeHTML(file.name)}</strong><p>This will replace the current workout library, exercise library, logs and body entries with the backup.</p></div><div class="modal-actions"><button id="confirmImportBackup" class="danger-btn" type="button">Restore backup</button><button id="cancelImportBackup" class="secondary-btn" type="button">Cancel</button></div>`;
+      $('cancelImportBackup').onclick=closeModal;$('confirmImportBackup').onclick=async()=>{
+        state.workouts=data.workouts||[];state.exercises=data.exercises||[];state.skills=data.skills||[];state.dayIndex=data.dayIndex||Object.keys(data.days||{}).map(date=>({date,key:dayKey(date),title:data.days[date]?.title||'Workout',finished:!!data.days[date]?.finished}));state.bodyIndex=data.bodyIndex||Object.keys(data.body||{});
+        await saveLibraries();for(const [date,obj] of Object.entries(data.days||{}))await Storage.set(dayKey(date),JSON.stringify(obj));for(const [date,obj] of Object.entries(data.body||{}))await Storage.set(bodyKey(date),JSON.stringify(obj));
+        for(const ex of state.exercises){const photo=data.photos?.[ex.id];if(photo){const key=ex.photoKey||photoKeyForExercise(ex.id);await MediaStorage.set(key,photo);ex.photoKey=key;state.photoCache[key]=photo;}}
+        await Storage.set(KEY_EXERCISES,JSON.stringify(state.exercises));await loadDay();closeModal();renderAll();showToast('Backup restored');haptic('success');
+      };openModal();
+    }catch(err){showToast('Could not read backup');}
   }
 
   function openModal(){

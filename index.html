@@ -52,6 +52,19 @@
           </div>
         </div>
 
+        <div class="mini-calendar card" id="miniCalendarCard">
+          <div class="mini-calendar-head">
+            <button id="calendarPrev" class="icon-btn calendar-nav" type="button" aria-label="Previous month">‹</button>
+            <div>
+              <div class="eyebrow">TRAINING CALENDAR</div>
+              <strong id="calendarMonthLabel">MONTH</strong>
+            </div>
+            <button id="calendarNext" class="icon-btn calendar-nav" type="button" aria-label="Next month">›</button>
+          </div>
+          <div class="mini-calendar-weekdays"><span>MO</span><span>TU</span><span>WE</span><span>TH</span><span>FR</span><span>SA</span><span>SU</span></div>
+          <div id="miniCalendarGrid" class="mini-calendar-grid"></div>
+        </div>
+
         <div id="dayEmpty" class="card empty-day hidden">
           <h3>NO PLAN FOR THIS DAY</h3>
           <p class="muted">Load a workout from the library, or just add exercises as you go.</p>
@@ -112,14 +125,24 @@
           <button class="exercise-filter" type="button" data-ex-category="CORE">Core</button>
           <button class="exercise-filter" type="button" data-ex-category="BACK">Back</button>
           <button class="exercise-filter" type="button" data-ex-category="CHEST">Chest</button>
-          <button class="exercise-filter" type="button" data-ex-category="SHOULDERS">Shoulders</button>
           <button class="exercise-filter" type="button" data-ex-category="CLIMBING">Climbing</button>
           <button class="exercise-filter" type="button" data-ex-category="SKILLS">Skills</button>
-          <button class="exercise-filter" type="button" data-ex-category="ANKLE">Ankle</button>
-          <button class="exercise-filter" type="button" data-ex-category="WRIST">Wrist</button>
+          <button class="exercise-filter" type="button" data-ex-category="REHAB">Rehab</button>
           <button class="exercise-filter" type="button" data-ex-category="OTHER">Other</button>
         </div>
         <div id="exerciseLibrary" class="library-grid"></div>
+
+        <div class="section-head library-divider backup-heading">
+          <div>
+            <h2>BACKUP</h2>
+            <p class="muted">Export your workouts, logs, body data and photos. Import restores them into this bot.</p>
+          </div>
+        </div>
+        <div class="card backup-card">
+          <button id="exportBackupBtn" class="primary-btn" type="button">Export backup</button>
+          <label class="secondary-btn file-picker-btn backup-import">Import backup<input id="importBackupInput" type="file" accept="application/json,.json"></label>
+          <p class="muted backup-note">Keep the JSON somewhere outside Telegram before major updates.</p>
+        </div>
       </section>
 
       <section id="tab-body" class="panel">
@@ -169,6 +192,16 @@
     </section>
   </div>
 
+  <div id="restTimerPanel" class="rest-timer hidden" aria-live="polite">
+    <div>
+      <div class="rest-timer-label">REST</div>
+      <div id="restTimerDisplay" class="rest-timer-display">1:30</div>
+    </div>
+    <div class="rest-timer-actions">
+      <button id="restTimerPlus" class="timer-btn" type="button">+30</button>
+      <button id="restTimerStop" class="timer-btn" type="button">Stop</button>
+    </div>
+  </div>
   <div id="toast" class="toast hidden"></div>
   <script src="app.js"></script>
 </body>
