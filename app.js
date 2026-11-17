@@ -8,12 +8,23 @@
   const KEY_SKILLS = 'tl_skills_v1';
   const KEY_DAY_INDEX = 'tl_day_index_v2';
   const KEY_BODY_INDEX = 'tl_body_index_v1';
+  const KEY_TESTS = 'tl_tests_v1';
   const DAY_PREFIX = 'tl_d2_';
   const BODY_PREFIX = 'tl_b_';
 
   // v1 keys are read only for one-time migration / history compatibility.
   const OLD_KEY_PLANS = 'tl_plans_v1';
   const OLD_KEY_SESSION_INDEX = 'tl_session_index_v1';
+
+  const DEFAULT_TESTS = [
+    {id:'test-pullups',name:'Strict pull-ups',unit:'reps',entries:[]},
+    {id:'test-weighted-pullup',name:'Weighted pull-up, 1 rep',unit:'added kg',entries:[]},
+    {id:'test-maxhang20',name:'Max hang, 20 mm · 10 s',unit:'added kg',entries:[]},
+    {id:'test-lsit',name:'L-sit',unit:'s',entries:[]},
+    {id:'test-broadjump',name:'Standing broad jump',unit:'cm',entries:[]},
+    {id:'test-calf-left',name:'Single-leg calf raises · left',unit:'reps',entries:[]},
+    {id:'test-calf-right',name:'Single-leg calf raises · right',unit:'reps',entries:[]}
+  ];
 
   const DEFAULT_SKILLS = [
     {id:'muscle-up', name:'Muscle-up', group:'ACTIVE', note:'High pull / transition progression'},
@@ -63,10 +74,10 @@
   ];
 
   const state = {
-    workouts: [], exercises: [], skills: structuredClone(DEFAULT_SKILLS),
+    workouts: [], exercises: [], skills: structuredClone(DEFAULT_SKILLS), tests: structuredClone(DEFAULT_TESTS),
     dayIndex: [], bodyIndex: [], oldSessionIndex: [], selectedDate: todayISO(),
     currentDay: null, modalContext: null, exerciseSearch: '', exerciseCategory: 'ALL', photoCache: {},
-    calendarMonth: todayISO().slice(0,7), restTimerEnd: 0, restTimerInterval: null
+    calendarMonth: todayISO().slice(0,7), calendarOpen: false, restTimerEnd: 0, restTimerInterval: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -223,10 +234,11 @@
   }
 
   async function loadCore(){
-    const [workoutsRaw, exercisesRaw, skillsRaw, dayIdxRaw, bodyIdxRaw, oldIdxRaw] = await Promise.all([
-      Storage.get(KEY_WORKOUTS),Storage.get(KEY_EXERCISES),Storage.get(KEY_SKILLS),Storage.get(KEY_DAY_INDEX),Storage.get(KEY_BODY_INDEX),Storage.get(OLD_KEY_SESSION_INDEX)
+    const [workoutsRaw, exercisesRaw, skillsRaw, dayIdxRaw, bodyIdxRaw, oldIdxRaw, testsRaw] = await Promise.all([
+      Storage.get(KEY_WORKOUTS),Storage.get(KEY_EXERCISES),Storage.get(KEY_SKILLS),Storage.get(KEY_DAY_INDEX),Storage.get(KEY_BODY_INDEX),Storage.get(OLD_KEY_SESSION_INDEX),Storage.get(KEY_TESTS)
     ]);
     state.skills=safeJSON(skillsRaw,structuredClone(DEFAULT_SKILLS))||structuredClone(DEFAULT_SKILLS);
+    state.tests=safeJSON(testsRaw,structuredClone(DEFAULT_TESTS))||structuredClone(DEFAULT_TESTS);
     state.dayIndex=safeJSON(dayIdxRaw,[])||[]; state.bodyIndex=safeJSON(bodyIdxRaw,[])||[]; state.oldSessionIndex=safeJSON(oldIdxRaw,[])||[];
 
     if(workoutsRaw && exercisesRaw){
@@ -266,7 +278,8 @@
       Storage.set(KEY_EXERCISES,JSON.stringify(state.exercises)),
       Storage.set(KEY_SKILLS,JSON.stringify(state.skills)),
       Storage.set(KEY_DAY_INDEX,JSON.stringify(state.dayIndex)),
-      Storage.set(KEY_BODY_INDEX,JSON.stringify(state.bodyIndex))
+      Storage.set(KEY_BODY_INDEX,JSON.stringify(state.bodyIndex)),
+      Storage.set(KEY_TESTS,JSON.stringify(state.tests))
     ]);
   }
 
@@ -307,6 +320,8 @@
     $('modalClose').onclick=closeModal; $('modalBackdrop').onclick=e=>{if(e.target===$('modalBackdrop'))closeModal();};
     $('saveBodyBtn').onclick=saveBody; $('addSkillBtn').onclick=()=>openSkillEditor();
     $('progressExercise').onchange=renderProgress; $('progressMetric').onchange=renderProgress;
+    $('newTestBtn').onclick=()=>openTestEditor();
+    $('calendarToggle').onclick=toggleCalendar;
     $('calendarPrev').onclick=()=>shiftCalendarMonth(-1);$('calendarNext').onclick=()=>shiftCalendarMonth(1);
     $('exportBackupBtn').onclick=exportBackup;$('importBackupInput').onchange=importBackupFile;
     $('restTimerPlus').onclick=()=>addRestTime(30);$('restTimerStop').onclick=stopRestTimer;
@@ -319,12 +334,34 @@
   }
   function renderAll(){renderTrain();renderLibrary();renderBody();renderSkills();populateProgressExercises();renderProgress();}
 
+  function isAutoCategorySection(item){
+    const raw=String(item.section||'').trim();
+    if(!raw) return false;
+    const ex=exerciseById(item.exerciseId);
+    if(!ex) return false;
+    const normalized=raw.toUpperCase();
+    const category=String(ex.category||'').trim().toUpperCase();
+    const displayed=displayCategory(ex.category||'').toUpperCase();
+    return normalized===category || normalized===displayed;
+  }
+
+  function dayGroupForItem(item){
+    const ss=String(item.superset||'').trim().toUpperCase();
+    if(ss) return {key:`superset:${ss}`,title:`SUPERSET ${ss}`,kind:'superset'};
+    const section=String(item.section||'').trim();
+    if(section && !isAutoCategorySection(item)) return {key:`section:${section.toLowerCase()}`,title:section,kind:'section'};
+    return {key:'ungrouped',title:'',kind:'plain'};
+  }
+
   function groupedDayItems(){
     const groups=[]; const map=new Map();
     (state.currentDay.items||[]).forEach(item=>{
-      const label=(item.section||'').trim()||'EXERCISES';
-      if(!map.has(label)){ const arr=[]; map.set(label,arr); groups.push([label,arr]); }
-      map.get(label).push(item);
+      const group=dayGroupForItem(item);
+      if(!map.has(group.key)){
+        const created={...group,items:[]};
+        map.set(group.key,created); groups.push(created);
+      }
+      map.get(group.key).items.push(item);
     });
     return groups;
   }
@@ -339,11 +376,16 @@
     $('addTodayExerciseBtn').style.display=count?'':'none'; $('saveTodayAsWorkoutBtn').style.display=count?'':'none'; $('finishDayBtn').style.display=count?'':'none';
 
     const host=$('dayExerciseSections'); host.innerHTML='';
-    groupedDayItems().forEach(([section,items])=>{
-      const wrap=document.createElement('div'); wrap.className='exercise-section';
-      const h=document.createElement('h3');h.textContent=section;wrap.appendChild(h);
+    groupedDayItems().forEach(group=>{
+      const wrap=document.createElement('div');
+      wrap.className='exercise-section'+(group.kind==='superset'?' superset-section':group.kind==='plain'?' plain-section':'');
+      wrap.dataset.groupKey=group.key;
+      if(group.title){
+        const h=document.createElement('h3');h.textContent=group.title;wrap.appendChild(h);
+      }
       const grid=document.createElement('div'); grid.className='day-exercise-grid';
-      items.forEach(item=>grid.appendChild(renderDayExercise(item)));
+      grid.dataset.groupKey=group.key;
+      group.items.forEach(item=>grid.appendChild(renderDayExercise(item)));
       wrap.appendChild(grid); host.appendChild(wrap);
     });
     renderLoggedToday(); renderRecentTrainingDays(); renderMiniCalendar(); enableDayReorder(); populateProgressExercises();
@@ -441,7 +483,7 @@
     const host=$('currentItems'); if(!host)return; host.innerHTML='';
     (draft.items||[]).forEach((item,i)=>{
       const row=document.createElement('div');row.className='editor-row editor-row-superset';
-      row.innerHTML=`<div class="name-static">${escapeHTML(itemName(item))}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="section"><select class="superset"><option value="">No superset</option><option value="A">Superset A</option><option value="B">Superset B</option><option value="C">Superset C</option><option value="D">Superset D</option></select><button class="ghost-btn remove-editor" type="button">×</button>`;
+      row.innerHTML=`<div class="name-static">${escapeHTML(itemName(item))}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="group / section"><select class="superset"><option value="">No superset</option><option value="A">Superset A</option><option value="B">Superset B</option><option value="C">Superset C</option><option value="D">Superset D</option></select><button class="ghost-btn remove-editor" type="button">×</button>`;
       row.querySelector('.target').oninput=e=>item.target=e.target.value;row.querySelector('.section').oninput=e=>item.section=e.target.value;row.querySelector('.superset').value=item.superset||'';row.querySelector('.superset').onchange=e=>item.superset=e.target.value;
       row.querySelector('.remove-editor').onclick=()=>{draft.items.splice(i,1);delete draft.logs[item.instanceId];renderCurrentEditorRows(draft);};host.appendChild(row);
     });
@@ -474,7 +516,7 @@
   }
 
   async function addExerciseToTarget(ex,mode,draft){
-    const item={instanceId:uid('item'),exerciseId:ex.id,name:ex.name,target:'',note:'',section:displayCategory(ex.category||''),superset:''};
+    const item={instanceId:uid('item'),exerciseId:ex.id,name:ex.name,target:'',note:'',section:'',superset:''};
     if(mode==='editor'&&draft){draft.items.push(item);$('modalKicker').textContent='TODAY';$('modalTitle').textContent='Edit current workout';closeModal();openCurrentEditorFromDraft(draft);return;}
     state.currentDay.items.push(item); if(!state.currentDay.title)state.currentDay.title='Custom workout';await saveDay();closeModal();renderTrain();showToast('Exercise added');
   }
@@ -551,12 +593,12 @@
   }
 
   function renderWorkoutEditorRows(draft){
-    const host=$('workoutItems');if(!host)return;host.innerHTML='';draft.items.forEach((item,i)=>{const ex=exerciseById(item.exerciseId);const row=document.createElement('div');row.className='editor-row editor-row-superset';row.innerHTML=`<div class="name-static">${escapeHTML(ex?.name||'Missing exercise')}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="section"><select class="superset"><option value="">No superset</option><option value="A">Superset A</option><option value="B">Superset B</option><option value="C">Superset C</option><option value="D">Superset D</option></select><button class="ghost-btn remove-editor" type="button">×</button>`;row.querySelector('.target').oninput=e=>item.target=e.target.value;row.querySelector('.section').oninput=e=>item.section=e.target.value;row.querySelector('.superset').value=item.superset||'';row.querySelector('.superset').onchange=e=>item.superset=e.target.value;row.querySelector('.remove-editor').onclick=()=>{draft.items.splice(i,1);renderWorkoutEditorRows(draft);};host.appendChild(row);});if(!draft.items.length)host.innerHTML='<div class="muted">No exercises yet.</div>';
+    const host=$('workoutItems');if(!host)return;host.innerHTML='';draft.items.forEach((item,i)=>{const ex=exerciseById(item.exerciseId);const row=document.createElement('div');row.className='editor-row editor-row-superset';row.innerHTML=`<div class="name-static">${escapeHTML(ex?.name||'Missing exercise')}</div><input class="target" value="${escapeHTML(item.target||'')}" placeholder="3 × 8"><input class="section" value="${escapeHTML(item.section||'')}" placeholder="group / section"><select class="superset"><option value="">No superset</option><option value="A">Superset A</option><option value="B">Superset B</option><option value="C">Superset C</option><option value="D">Superset D</option></select><button class="ghost-btn remove-editor" type="button">×</button>`;row.querySelector('.target').oninput=e=>item.target=e.target.value;row.querySelector('.section').oninput=e=>item.section=e.target.value;row.querySelector('.superset').value=item.superset||'';row.querySelector('.superset').onchange=e=>item.superset=e.target.value;row.querySelector('.remove-editor').onclick=()=>{draft.items.splice(i,1);renderWorkoutEditorRows(draft);};host.appendChild(row);});if(!draft.items.length)host.innerHTML='<div class="muted">No exercises yet.</div>';
   }
 
   function openWorkoutExercisePicker(draft){
     $('modalKicker').textContent='WORKOUT';$('modalTitle').textContent='Add from library';$('modalBody').innerHTML=`<div class="field"><label>Search</label><input id="workoutExSearch" placeholder="Search exercise"></div><div class="picker-list" id="workoutExPicker"></div><div class="modal-actions"><button id="workoutNewEx" class="secondary-btn" type="button">+ New exercise</button></div>`;
-    const render=()=>{const term=norm($('workoutExSearch').value),host=$('workoutExPicker');host.innerHTML='';state.exercises.filter(e=>!term||norm(e.name+' '+e.category).includes(term)).slice(0,80).forEach(ex=>{const b=document.createElement('button');b.className='picker-item';b.type='button';b.innerHTML=`<strong>${escapeHTML(ex.name)}</strong><span>${escapeHTML(displayCategory(ex.category||'GENERAL'))}</span>`;b.onclick=()=>{draft.items.push({exerciseId:ex.id,target:'',note:'',section:displayCategory(ex.category||''),superset:''});openWorkoutEditorFromDraft(draft);};host.appendChild(b);});};$('workoutExSearch').oninput=render;$('workoutNewEx').onclick=()=>openExerciseEditor(null,{workoutDraft:draft});render();
+    const render=()=>{const term=norm($('workoutExSearch').value),host=$('workoutExPicker');host.innerHTML='';state.exercises.filter(e=>!term||norm(e.name+' '+e.category).includes(term)).slice(0,80).forEach(ex=>{const b=document.createElement('button');b.className='picker-item';b.type='button';b.innerHTML=`<strong>${escapeHTML(ex.name)}</strong><span>${escapeHTML(displayCategory(ex.category||'GENERAL'))}</span>`;b.onclick=()=>{draft.items.push({exerciseId:ex.id,target:'',note:'',section:'',superset:''});openWorkoutEditorFromDraft(draft);};host.appendChild(b);});};$('workoutExSearch').oninput=render;$('workoutNewEx').onclick=()=>openExerciseEditor(null,{workoutDraft:draft});render();
   }
 
   function openWorkoutEditorFromDraft(draft){
@@ -579,8 +621,8 @@
       if(pendingPhotoData){const key=draft.photoKey||photoKeyForExercise(draft.id);const ok=await MediaStorage.set(key,pendingPhotoData);if(!ok){showToast('Photo storage is full');return;}draft.photoKey=key;state.photoCache[key]=pendingPhotoData;}
       const i=state.exercises.findIndex(x=>x.id===draft.id);if(i>=0)state.exercises[i]=draft;else state.exercises.push(draft);await saveLibraries();
       if(context?.addMode==='today'){await addExerciseToTarget(draft,'today');return;}
-      if(context?.addMode==='editor'&&context.draft){context.draft.items.push({instanceId:uid('item'),exerciseId:draft.id,name:draft.name,target:'',note:'',section:displayCategory(draft.category),superset:''});openCurrentEditorFromDraft(context.draft);return;}
-      if(context?.workoutDraft){context.workoutDraft.items.push({exerciseId:draft.id,target:'',note:'',section:displayCategory(draft.category),superset:''});openWorkoutEditorFromDraft(context.workoutDraft);return;}
+      if(context?.addMode==='editor'&&context.draft){context.draft.items.push({instanceId:uid('item'),exerciseId:draft.id,name:draft.name,target:'',note:'',section:'',superset:''});openCurrentEditorFromDraft(context.draft);return;}
+      if(context?.workoutDraft){context.workoutDraft.items.push({exerciseId:draft.id,target:'',note:'',section:'',superset:''});openWorkoutEditorFromDraft(context.workoutDraft);return;}
       closeModal();renderLibrary();renderTrain();populateProgressExercises();showToast('Exercise saved');
     };
     if(existing)$('deleteExerciseLibraryBtn').onclick=async()=>{const inWorkouts=state.workouts.some(w=>w.items.some(x=>x.exerciseId===id));if(inWorkouts){showToast('Remove it from saved workouts first');return;}await removeExercisePhoto(existing);state.exercises=state.exercises.filter(x=>x.id!==id);await saveLibraries();closeModal();renderLibrary();populateProgressExercises();showToast('Exercise deleted');};
@@ -608,6 +650,7 @@
   }
   function metricValue(entry,metric){const sets=(entry.sets||[]).map(s=>({w:parseFloat(String(s.weight).replace(',','.'))||0,r:parseFloat(String(s.reps).replace(',','.'))||0}));if(!sets.length)return 0;if(metric==='topWeight')return Math.max(...sets.map(s=>s.w));if(metric==='bestReps')return Math.max(...sets.map(s=>s.r));if(metric==='volume')return sets.reduce((a,s)=>a+s.w*s.r,0);if(metric==='e1rm')return Math.max(...sets.map(s=>s.w>0&&s.r>0?s.w*(1+s.r/30):0));return 0;}
   async function renderProgress(){
+    renderTests();
     const exId=$('progressExercise').value;if(!exId)return;const metric=$('progressMetric').value,hist=await getExerciseHistory(exId),pts=hist.map(h=>({date:h.date,value:metricValue(h,metric),raw:h})).filter(x=>Number.isFinite(x.value)&&x.value>0);$('progressEmpty').style.display=pts.length?'none':'block';$('progressChart').style.display=pts.length?'block':'none';const svg=$('progressChart');svg.innerHTML='';if(pts.length){const W=800,H=280,pad={l:52,r:18,t:20,b:42},vals=pts.map(p=>p.value);let min=Math.min(...vals),max=Math.max(...vals);if(min===max){min*=.9;max*=1.1||1;}const range=max-min||1,x=i=>pad.l+(pts.length===1?(W-pad.l-pad.r)/2:i*(W-pad.l-pad.r)/(pts.length-1)),y=v=>pad.t+(max-v)/range*(H-pad.t-pad.b);for(let i=0;i<4;i++){const yy=pad.t+i*(H-pad.t-pad.b)/3,val=max-i*range/3;svg.insertAdjacentHTML('beforeend',`<line class="chart-grid" x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}"/><text class="chart-label" x="4" y="${yy+4}">${Math.round(val*10)/10}</text>`);}const d=pts.map((p,i)=>`${i?'L':'M'} ${x(i)} ${y(p.value)}`).join(' ');svg.insertAdjacentHTML('beforeend',`<path class="chart-line" d="${d}"/>`);pts.forEach((p,i)=>svg.insertAdjacentHTML('beforeend',`<circle class="chart-dot" cx="${x(i)}" cy="${y(p.value)}" r="5"/><text class="chart-label" x="${x(i)}" y="${H-12}" text-anchor="middle">${p.date.slice(5)}</text>`));}
     const host=$('progressHistory');host.innerHTML='';hist.slice().reverse().forEach(h=>{const row=document.createElement('div');row.className='history-row';row.innerHTML=`<strong>${escapeHTML(h.date)} · ${escapeHTML(h.workout||'Workout')}</strong><span>${escapeHTML(formatSetSummary(h.sets)||'Logged')}</span><span>${h.rpe?'RPE '+escapeHTML(h.rpe):''}${h.pain?' · pain '+escapeHTML(h.pain):''}</span>`;host.appendChild(row);});if(!hist.length)host.innerHTML='<div class="muted">No history yet.</div>';
   }
@@ -622,37 +665,89 @@
     if(returnItem)$('historyBackToLog').onclick=()=>openExerciseLogger(returnItem);openModal();
   }
 
+  function testById(id){ return state.tests.find(t=>t.id===id)||null; }
+  function sortedTestEntries(test){ return [...(test?.entries||[])].sort((a,b)=>b.date.localeCompare(a.date)||(b.createdAt||'').localeCompare(a.createdAt||'')); }
+  function formatTestPoint(entry,unit){
+    if(!entry) return '<span class="test-empty">—</span>';
+    return `<strong>${escapeHTML(entry.value)}${unit?' <small>'+escapeHTML(unit)+'</small>':''}</strong><span>${escapeHTML(entry.date)}</span>`;
+  }
+  function renderTests(){
+    const host=$('testsList'); if(!host) return; host.innerHTML='';
+    state.tests.forEach(test=>{
+      const entries=sortedTestEntries(test),latest=entries[0],previous=entries[1];
+      const row=document.createElement('div');row.className='test-row';
+      row.innerHTML=`<button class="test-name-cell" type="button"><strong>${escapeHTML(test.name)}</strong><span>${escapeHTML(test.unit||'')}</span></button><div class="test-point">${formatTestPoint(latest,test.unit)}</div><div class="test-point">${formatTestPoint(previous,test.unit)}</div><button class="test-add-result" type="button">+ result</button>`;
+      row.querySelector('.test-name-cell').onclick=()=>openTestHistory(test.id);
+      row.querySelector('.test-add-result').onclick=()=>openTestResultEditor(test.id);
+      host.appendChild(row);
+    });
+    if(!state.tests.length) host.innerHTML='<div class="muted tests-empty">No tests yet. Add only the checkpoints you actually care about.</div>';
+  }
+  function openTestEditor(id=null){
+    const existing=id?testById(id):null,draft=existing?structuredClone(existing):{id:uid('test'),name:'',unit:'',entries:[]};
+    $('modalKicker').textContent='PROGRESS · TESTS';$('modalTitle').textContent=existing?'Edit test':'New test';
+    $('modalBody').innerHTML=`<div class="grid-card"><div class="field span-2"><label>Test name</label><input id="testName" value="${escapeHTML(draft.name)}" placeholder="e.g. Strict pull-ups"></div><div class="field span-2"><label>Unit</label><input id="testUnit" value="${escapeHTML(draft.unit||'')}" placeholder="reps, kg, cm, s…"></div></div><div class="modal-actions"><button id="saveTestBtn" class="primary-btn" type="button">Save test</button>${existing?'<button id="deleteTestBtn" class="danger-btn" type="button">Delete test</button>':''}</div>`;
+    $('saveTestBtn').onclick=async()=>{draft.name=$('testName').value.trim()||'Untitled test';draft.unit=$('testUnit').value.trim();const i=state.tests.findIndex(x=>x.id===draft.id);if(i>=0)state.tests[i]=draft;else state.tests.push(draft);await Storage.set(KEY_TESTS,JSON.stringify(state.tests));closeModal();renderTests();showToast('Test saved');haptic('success');};
+    if(existing)$('deleteTestBtn').onclick=async()=>{state.tests=state.tests.filter(x=>x.id!==id);await Storage.set(KEY_TESTS,JSON.stringify(state.tests));closeModal();renderTests();showToast('Test deleted');};
+    openModal();
+  }
+  function openTestResultEditor(testId,entryId=null){
+    const test=testById(testId);if(!test)return;const existing=entryId?(test.entries||[]).find(x=>x.id===entryId):null;
+    const draft=existing?structuredClone(existing):{id:uid('result'),date:todayISO(),value:'',note:'',createdAt:new Date().toISOString()};
+    $('modalKicker').textContent='TEST RESULT';$('modalTitle').textContent=test.name;
+    $('modalBody').innerHTML=`<div class="grid-card"><div class="field"><label>Date</label><input id="testResultDate" type="date" value="${escapeHTML(draft.date)}"></div><div class="field"><label>Result${test.unit?' · '+escapeHTML(test.unit):''}</label><input id="testResultValue" inputmode="decimal" value="${escapeHTML(draft.value)}" placeholder="Value"></div><div class="field span-2"><label>Note</label><textarea id="testResultNote" rows="2" placeholder="Optional">${escapeHTML(draft.note||'')}</textarea></div></div><div class="modal-actions"><button id="saveTestResultBtn" class="primary-btn" type="button">Save result</button>${existing?'<button id="deleteTestResultBtn" class="danger-btn" type="button">Delete result</button>':''}<button id="backToTestHistoryBtn" class="secondary-btn" type="button">History</button></div>`;
+    $('saveTestResultBtn').onclick=async()=>{draft.date=$('testResultDate').value||todayISO();draft.value=$('testResultValue').value.trim();draft.note=$('testResultNote').value.trim();if(!draft.value){showToast('Enter a result');return;}test.entries=test.entries||[];const i=test.entries.findIndex(x=>x.id===draft.id);if(i>=0)test.entries[i]=draft;else test.entries.push(draft);await Storage.set(KEY_TESTS,JSON.stringify(state.tests));closeModal();renderTests();showToast('Result saved');haptic('success');};
+    if(existing)$('deleteTestResultBtn').onclick=async()=>{test.entries=(test.entries||[]).filter(x=>x.id!==entryId);await Storage.set(KEY_TESTS,JSON.stringify(state.tests));openTestHistory(testId);showToast('Result deleted');};
+    $('backToTestHistoryBtn').onclick=()=>openTestHistory(testId);openModal();
+  }
+  function openTestHistory(testId){
+    const test=testById(testId);if(!test)return;const entries=sortedTestEntries(test);
+    $('modalKicker').textContent='TEST HISTORY';$('modalTitle').textContent=test.name;
+    $('modalBody').innerHTML=`<div class="test-history-meta"><span>${escapeHTML(test.unit||'No unit')}</span><strong>${entries.length} result${entries.length===1?'':'s'}</strong></div><div id="testHistoryRows" class="test-history-list"></div><div class="modal-actions"><button id="addTestHistoryResult" class="primary-btn" type="button">+ Result</button><button id="editTestDefinition" class="secondary-btn" type="button">Edit test</button></div>`;
+    const host=$('testHistoryRows');entries.forEach(e=>{const b=document.createElement('button');b.type='button';b.className='test-history-row';b.innerHTML=`<span>${escapeHTML(e.date)}</span><strong>${escapeHTML(e.value)}${test.unit?' <small>'+escapeHTML(test.unit)+'</small>':''}</strong><em>${escapeHTML(e.note||'')}</em>`;b.onclick=()=>openTestResultEditor(testId,e.id);host.appendChild(b);});if(!entries.length)host.innerHTML='<div class="muted tests-empty">No results yet.</div>';
+    $('addTestHistoryResult').onclick=()=>openTestResultEditor(testId);$('editTestDefinition').onclick=()=>openTestEditor(testId);openModal();
+  }
+
+  function toggleCalendar(){
+    state.calendarOpen=!state.calendarOpen;const body=$('calendarBody'),btn=$('calendarToggle'),icon=$('calendarToggleIcon');
+    body.classList.toggle('hidden',!state.calendarOpen);btn.setAttribute('aria-expanded',String(state.calendarOpen));icon.textContent=state.calendarOpen?'⌃':'⌄';
+    if(state.calendarOpen)renderMiniCalendar();
+  }
+
   function shiftCalendarMonth(delta){
     const [y,m]=state.calendarMonth.split('-').map(Number);const d=new Date(y,m-1+delta,1);state.calendarMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;renderMiniCalendar();
   }
   function renderMiniCalendar(){
-    const label=$('calendarMonthLabel'),grid=$('miniCalendarGrid');if(!label||!grid)return;
+    const label=$('calendarMonthLabel'),compact=$('calendarCompactLabel'),grid=$('miniCalendarGrid');if(!label||!grid)return;
     const [y,m]=state.calendarMonth.split('-').map(Number);const first=new Date(y,m-1,1);const days=new Date(y,m,0).getDate();const offset=(first.getDay()+6)%7;
-    label.textContent=first.toLocaleDateString(undefined,{month:'long',year:'numeric'}).toUpperCase();grid.innerHTML='';
+    const monthText=first.toLocaleDateString(undefined,{month:'long',year:'numeric'}).toUpperCase();label.textContent=monthText;if(compact)compact.textContent=monthText;grid.innerHTML='';
     for(let i=0;i<offset;i++){const blank=document.createElement('span');blank.className='calendar-day blank';grid.appendChild(blank);}
     const trained=new Set(state.dayIndex.map(x=>x.date));
     for(let d=1;d<=days;d++){
       const iso=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;const b=document.createElement('button');b.type='button';b.className='calendar-day';b.textContent=d;b.dataset.date=iso;
       if(iso===state.selectedDate)b.classList.add('selected');if(iso===todayISO())b.classList.add('today');if(trained.has(iso))b.classList.add('has-workout');
-      b.onclick=async()=>{state.selectedDate=iso;state.calendarMonth=iso.slice(0,7);$('dayInput').value=iso;$('bodyDate').value=iso;await loadDay();renderTrain();};grid.appendChild(b);
+      b.onclick=async()=>{state.selectedDate=iso;state.calendarMonth=iso.slice(0,7);state.calendarOpen=false;$('dayInput').value=iso;$('bodyDate').value=iso;$('calendarBody').classList.add('hidden');$('calendarToggle').setAttribute('aria-expanded','false');$('calendarToggleIcon').textContent='⌄';await loadDay();renderTrain();};grid.appendChild(b);
     }
   }
 
-  function syncSectionOrder(section,orderedIds){
-    const indexes=[];state.currentDay.items.forEach((x,i)=>{if(((x.section||'').trim()||'EXERCISES')===section)indexes.push(i);});
-    const byId=new Map(state.currentDay.items.map(x=>[x.instanceId,x]));indexes.forEach((idx,i)=>{const item=byId.get(orderedIds[i]);if(item)state.currentDay.items[idx]=item;});saveDay();
+  function syncGroupOrder(groupKey,orderedIds){
+    const indexes=[];
+    state.currentDay.items.forEach((x,i)=>{if(dayGroupForItem(x).key===groupKey)indexes.push(i);});
+    const byId=new Map(state.currentDay.items.map(x=>[x.instanceId,x]));
+    indexes.forEach((idx,i)=>{const item=byId.get(orderedIds[i]);if(item)state.currentDay.items[idx]=item;});
+    saveDay();
   }
   function enableDayReorder(){
     qsa('.day-exercise-grid').forEach(grid=>{
-      const section=grid.closest('.exercise-section')?.querySelector('h3')?.textContent||'EXERCISES';let dragged=null;
+      const groupKey=grid.dataset.groupKey||'ungrouped';let dragged=null;
       qsa('.exercise-row-card',grid).forEach(card=>{
         card.addEventListener('dragstart',e=>{if(!e.target.closest('.drag-handle')&&document.activeElement!==card.querySelector('.drag-handle')){}dragged=card;card.classList.add('dragging');try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',card.dataset.instanceId);}catch(_){}});
-        card.addEventListener('dragend',()=>{card.classList.remove('dragging');const ids=qsa('.exercise-row-card',grid).map(x=>x.dataset.instanceId);syncSectionOrder(section,ids);});
+        card.addEventListener('dragend',()=>{card.classList.remove('dragging');const ids=qsa('.exercise-row-card',grid).map(x=>x.dataset.instanceId);syncGroupOrder(groupKey,ids);});
         const handle=card.querySelector('.drag-handle');if(!handle)return;
         let touchActive=false;
         handle.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;touchActive=true;dragged=card;card.classList.add('dragging-touch');handle.setPointerCapture?.(e.pointerId);e.preventDefault();});
         handle.addEventListener('pointermove',e=>{if(!touchActive||!dragged)return;const el=document.elementFromPoint(e.clientX,e.clientY);const over=el?.closest('.exercise-row-card');if(!over||over===dragged||over.parentElement!==grid)return;const r=over.getBoundingClientRect();grid.insertBefore(dragged,e.clientY<r.top+r.height/2?over:over.nextSibling);e.preventDefault();});
-        const finish=e=>{if(!touchActive)return;touchActive=false;card.classList.remove('dragging-touch');try{handle.releasePointerCapture?.(e.pointerId);}catch(_){}const ids=qsa('.exercise-row-card',grid).map(x=>x.dataset.instanceId);syncSectionOrder(section,ids);haptic('selection');};handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
+        const finish=e=>{if(!touchActive)return;touchActive=false;card.classList.remove('dragging-touch');try{handle.releasePointerCapture?.(e.pointerId);}catch(_){}const ids=qsa('.exercise-row-card',grid).map(x=>x.dataset.instanceId);syncGroupOrder(groupKey,ids);haptic('selection');};handle.addEventListener('pointerup',finish);handle.addEventListener('pointercancel',finish);
       });
       grid.addEventListener('dragover',e=>{e.preventDefault();if(!dragged)return;const cards=qsa('.exercise-row-card:not(.dragging)',grid);const after=cards.find(c=>{const r=c.getBoundingClientRect();return e.clientY<r.top+r.height/2;});grid.insertBefore(dragged,after||null);});
     });
@@ -676,7 +771,7 @@
       for(const entry of state.dayIndex){const raw=await Storage.get(entry.key||dayKey(entry.date));if(raw)days[entry.date]=safeJSON(raw,null);}
       for(const date of state.bodyIndex){const raw=await Storage.get(bodyKey(date));if(raw)body[date]=safeJSON(raw,null);}
       for(const ex of state.exercises){if(ex.photoKey){const data=await getExercisePhoto(ex);if(data)photos[ex.id]=data;}}
-      const payload={app:'TRAINING LOG',version:3,exportedAt:new Date().toISOString(),workouts:state.workouts,exercises:state.exercises,skills:state.skills,dayIndex:state.dayIndex,bodyIndex:state.bodyIndex,days,body,photos};
+      const payload={app:'TRAINING LOG',version:4,exportedAt:new Date().toISOString(),workouts:state.workouts,exercises:state.exercises,skills:state.skills,tests:state.tests,dayIndex:state.dayIndex,bodyIndex:state.bodyIndex,days,body,photos};
       const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`training-log-backup-${todayISO()}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000);showToast('Backup exported');haptic('success');
     }catch(e){showToast('Backup failed');}
   }
@@ -686,7 +781,7 @@
       const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.exercises)||!Array.isArray(data.workouts))throw new Error('Invalid backup');
       $('modalKicker').textContent='BACKUP';$('modalTitle').textContent='Restore backup?';$('modalBody').innerHTML=`<div class="confirm-copy"><strong>${escapeHTML(file.name)}</strong><p>This will replace the current workout library, exercise library, logs and body entries with the backup.</p></div><div class="modal-actions"><button id="confirmImportBackup" class="danger-btn" type="button">Restore backup</button><button id="cancelImportBackup" class="secondary-btn" type="button">Cancel</button></div>`;
       $('cancelImportBackup').onclick=closeModal;$('confirmImportBackup').onclick=async()=>{
-        state.workouts=data.workouts||[];state.exercises=data.exercises||[];state.skills=data.skills||[];state.dayIndex=data.dayIndex||Object.keys(data.days||{}).map(date=>({date,key:dayKey(date),title:data.days[date]?.title||'Workout',finished:!!data.days[date]?.finished}));state.bodyIndex=data.bodyIndex||Object.keys(data.body||{});
+        state.workouts=data.workouts||[];state.exercises=data.exercises||[];state.skills=data.skills||[];state.tests=data.tests||structuredClone(DEFAULT_TESTS);state.dayIndex=data.dayIndex||Object.keys(data.days||{}).map(date=>({date,key:dayKey(date),title:data.days[date]?.title||'Workout',finished:!!data.days[date]?.finished}));state.bodyIndex=data.bodyIndex||Object.keys(data.body||{});
         await saveLibraries();for(const [date,obj] of Object.entries(data.days||{}))await Storage.set(dayKey(date),JSON.stringify(obj));for(const [date,obj] of Object.entries(data.body||{}))await Storage.set(bodyKey(date),JSON.stringify(obj));
         for(const ex of state.exercises){const photo=data.photos?.[ex.id];if(photo){const key=ex.photoKey||photoKeyForExercise(ex.id);await MediaStorage.set(key,photo);ex.photoKey=key;state.photoCache[key]=photo;}}
         await Storage.set(KEY_EXERCISES,JSON.stringify(state.exercises));await loadDay();closeModal();renderAll();showToast('Backup restored');haptic('success');

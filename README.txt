@@ -1,13 +1,11 @@
-Training Log Telegram Mini App v4.3
+TRAINING LOG v4.4 — GitHub Pages / Telegram Mini App
 
-Added:
-- Rest timer with 60 / 90 / 120 second presets, +30 sec and stop.
-- Drag-and-drop reordering for exercises in the current day (within sections; touch handle on mobile).
-- Superset labels A-D for current workouts and saved workout templates.
-- Exercise history directly from Exercise Library and today's exercise cards.
-- JSON backup export/import for workouts, exercises, logs, body data, skills and local exercise photos when available.
-- Compact month calendar on TRAIN with workout dots and day selection.
-- Simplified exercise filters: Legs, Arms, Core, Back, Chest, Climbing, Skills, Rehab, Other.
-  Legacy Ankle/Wrist categories appear under Rehab; legacy Shoulders appear under Arms.
+Update from v4.3:
+- Training calendar is collapsed by default and opens on tap.
+- Progress now includes customizable Tests with manual result dates and full history.
+- Existing workout/exercise/body storage keys are unchanged.
+- Tests use a new independent key: tl_tests_v1.
+- Backup export/import includes Tests.
 
-Storage keys are unchanged from v4.2, so existing user data remains compatible.
+Upload index.html, app.js, styles.css and .nojekyll to the existing GitHub Pages repository.
+The Telegram/BotFather URL does not change.

@@ -187,3 +187,36 @@ button:disabled{opacity:.38;cursor:default}
 @media(max-width:760px){
   .exercise-row-card{grid-template-columns:26px minmax(0,1fr) auto}.exercise-row-card .row-actions{gap:1px}.drag-handle{width:24px}.editor-row.editor-row-superset{grid-template-columns:1fr 1fr}.editor-row.editor-row-superset .name-static{grid-column:1/-1}.editor-row.editor-row-superset .superset{grid-column:1}.editor-row.editor-row-superset .remove-editor{grid-column:2}.mini-calendar{padding:13px 12px}.calendar-day{border-radius:9px}.rest-timer{min-width:200px;bottom:calc(10px + var(--tg-safe-bottom))}.history-stats strong{font-size:16px}
 }
+
+/* v4.4 — collapsible calendar + manual-date tests */
+.calendar-shell{padding:0;margin:14px 0;background:rgba(255,255,255,.62);overflow:hidden}
+.calendar-toggle{width:100%;border:0;background:transparent;display:flex;align-items:center;justify-content:space-between;text-align:left;padding:13px 15px;color:var(--ink)}
+.calendar-toggle strong{display:block;margin-top:3px;font-size:13px;font-weight:520;letter-spacing:-.1px}
+.calendar-toggle-icon{width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--line);border-radius:50%;color:var(--muted-strong);font-size:17px;background:rgba(251,251,248,.7)}
+.calendar-body{padding:0 15px 14px;border-top:1px solid var(--line-soft)}
+.calendar-body .mini-calendar-head{margin-top:11px}
+.calendar-shell .mini-calendar-head{grid-template-columns:38px 1fr 38px;margin-bottom:10px}
+.calendar-shell .mini-calendar-head strong{font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:1px;color:var(--muted-strong)}
+
+.tests-heading{margin-top:34px}.tests-card{padding:0 17px;overflow:hidden}
+.tests-table-head,.test-row{display:grid;grid-template-columns:minmax(190px,1.7fr) minmax(118px,.85fr) minmax(118px,.85fr) 82px;gap:10px;align-items:center}
+.tests-table-head{padding:12px 0 8px;border-bottom:1px solid var(--line);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:8px;letter-spacing:1.1px;color:var(--muted);font-weight:760}
+.test-row{min-height:72px;padding:11px 0;border-bottom:1px solid var(--line-soft)}.test-row:last-child{border-bottom:0}
+.test-name-cell{border:0;background:transparent;text-align:left;padding:0;min-width:0}.test-name-cell strong{display:block;color:var(--ink);font-size:13px;font-weight:600;line-height:1.25}.test-name-cell span{display:block;margin-top:4px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:8px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted)}
+.test-point{min-width:0}.test-point strong{display:block;font-size:17px;font-weight:470;color:var(--ink);line-height:1.05}.test-point strong small{font-size:9px;font-weight:600;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.test-point>span{display:block;margin-top:5px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:8px;color:var(--muted)}.test-empty{font-size:15px;color:#b4b9b5}
+.test-add-result{border:1px solid var(--line);background:#f8f8f5;border-radius:999px;padding:8px 10px;font-size:9px;font-weight:720;color:var(--muted-strong);white-space:nowrap}
+.tests-empty{padding:18px 0}.test-history-meta{display:flex;justify-content:space-between;align-items:center;padding:3px 2px 12px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9px;letter-spacing:.7px}.test-history-meta strong{color:var(--ink);font-weight:700}.test-history-list{border-top:1px solid var(--line)}
+.test-history-row{width:100%;border:0;border-bottom:1px solid var(--line-soft);background:transparent;display:grid;grid-template-columns:90px 115px minmax(0,1fr);gap:10px;align-items:center;text-align:left;padding:13px 2px}.test-history-row span{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:9px;color:var(--muted)}.test-history-row strong{font-size:16px;font-weight:520;color:var(--ink)}.test-history-row strong small{font-size:9px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.test-history-row em{font-style:normal;font-size:11px;color:var(--muted-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+@media(max-width:760px){
+  .calendar-toggle{padding:12px 13px}.calendar-body{padding-left:12px;padding-right:12px}
+  .tests-card{padding:0 13px}.tests-table-head{display:none}.test-row{grid-template-columns:1fr 1fr;gap:8px;padding:13px 0}.test-name-cell{grid-column:1/-1}.test-point{background:var(--soft);border-radius:12px;padding:9px 10px;min-width:0}.test-add-result{grid-column:1/-1;justify-self:start}.test-history-row{grid-template-columns:76px 92px minmax(0,1fr)}
+}
+
+
+/* v4.5 — workout-structure grouping */
+.exercise-section.plain-section{margin-top:14px}
+.exercise-section.superset-section{margin-top:22px;padding:11px 10px 9px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.34)}
+.exercise-section.superset-section>h3{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:#eef1ff;color:#5d63a0;margin:0 2px 9px}
+.exercise-section.superset-section .superset-badge{display:none}
+.exercise-section.superset-section .exercise-row-card{border-left-width:0;padding-left:9px}

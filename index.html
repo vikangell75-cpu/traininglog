@@ -52,17 +52,23 @@
           </div>
         </div>
 
-        <div class="mini-calendar card" id="miniCalendarCard">
-          <div class="mini-calendar-head">
-            <button id="calendarPrev" class="icon-btn calendar-nav" type="button" aria-label="Previous month">‹</button>
+        <div class="calendar-shell card" id="miniCalendarCard">
+          <button id="calendarToggle" class="calendar-toggle" type="button" aria-expanded="false">
             <div>
               <div class="eyebrow">TRAINING CALENDAR</div>
-              <strong id="calendarMonthLabel">MONTH</strong>
+              <strong id="calendarCompactLabel">Open calendar</strong>
             </div>
-            <button id="calendarNext" class="icon-btn calendar-nav" type="button" aria-label="Next month">›</button>
+            <span id="calendarToggleIcon" class="calendar-toggle-icon" aria-hidden="true">⌄</span>
+          </button>
+          <div id="calendarBody" class="calendar-body hidden">
+            <div class="mini-calendar-head">
+              <button id="calendarPrev" class="icon-btn calendar-nav" type="button" aria-label="Previous month">‹</button>
+              <div><strong id="calendarMonthLabel">MONTH</strong></div>
+              <button id="calendarNext" class="icon-btn calendar-nav" type="button" aria-label="Next month">›</button>
+            </div>
+            <div class="mini-calendar-weekdays"><span>MO</span><span>TU</span><span>WE</span><span>TH</span><span>FR</span><span>SA</span><span>SU</span></div>
+            <div id="miniCalendarGrid" class="mini-calendar-grid"></div>
           </div>
-          <div class="mini-calendar-weekdays"><span>MO</span><span>TU</span><span>WE</span><span>TH</span><span>FR</span><span>SA</span><span>SU</span></div>
-          <div id="miniCalendarGrid" class="mini-calendar-grid"></div>
         </div>
 
         <div id="dayEmpty" class="card empty-day hidden">
@@ -178,6 +184,15 @@
         </div>
         <div class="card chart-card"><div id="progressEmpty" class="empty-state">Log this exercise at least once to see progress.</div><svg id="progressChart" viewBox="0 0 800 280" preserveAspectRatio="none" aria-label="Progress chart"></svg></div>
         <div class="card"><h3>History</h3><div id="progressHistory"></div></div>
+
+        <div class="section-head tests-heading">
+          <div><h2>TESTS</h2><p class="muted">Manual checkpoints with any dates you choose.</p></div>
+          <button id="newTestBtn" class="pill-btn" type="button">+ Test</button>
+        </div>
+        <div class="card tests-card">
+          <div class="tests-table-head"><span>TEST</span><span>LATEST</span><span>PREVIOUS</span><span></span></div>
+          <div id="testsList"></div>
+        </div>
       </section>
     </main>
   </div>
